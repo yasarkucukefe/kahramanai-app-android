@@ -56,4 +56,19 @@ dependencies {
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
 
+    implementation(libs.google.material)
+
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp.logging.interceptor)
+
+    // Coroutines for background tasks
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
+
+    // ViewModel KTX for viewModelScope
+    implementation(libs.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.activity.ktx)
+
+
 }

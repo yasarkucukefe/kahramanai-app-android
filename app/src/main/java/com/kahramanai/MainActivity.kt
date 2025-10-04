@@ -1,6 +1,7 @@
 package com.kahramanai
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.text.Editable
@@ -30,6 +31,10 @@ import com.google.mlkit.vision.common.InputImage
 import com.kahramanai.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import com.google.android.material.snackbar.Snackbar
+import com.kahramanai.ui.MainViewModel
+import androidx.activity.viewModels
+import com.kahramanai.util.NetworkResult
 
 class MainActivity : AppCompatActivity() {
 
@@ -41,8 +46,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private var imageAnalysis: ImageAnalysis? = null
     private var barcodeScanner: BarcodeScanner? = null
-
+    private var isScanning = false
     private lateinit var binding: ActivityMainBinding
+
+    private val viewModel: MainViewModel by viewModels()
+    private val LOADING_DIALOG_TAG = "loading_dialog"
 
     // 1. Initialize the permission launcher
     private val requestPermissionLauncher =
@@ -77,6 +85,8 @@ class MainActivity : AppCompatActivity() {
         viewFinder = binding.viewFinder
         cameraExecutor = Executors.newSingleThreadExecutor()
 
+
+
         // Now that 'binding' is initialized, you can add your TextWatcher logic here.
         val shareLinkEditText = binding.textInputShareLink
         //val useShareLinkButton = binding.btnUseShareLink
@@ -90,21 +100,32 @@ class MainActivity : AppCompatActivity() {
         }
         shareLinkEditText.addTextChangedListener(textWatcher)
 
+        // Share Link
+        val shareLinkButton = binding.btnUseShareLink
+
+        // REMOVE THIS LINE IN PROD
+        binding.textInputShareLink.setText("https://kahramanai.com/jwt/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo4LCJiaWQiOiI1IiwiZXhwIjoxNzU5NjYyNTU0fQ.Uxjv5BxibJRtCGJTKs2W9bXK-IcUQG1tHI7LxxiGUgw")
+
+        shareLinkButton.setOnClickListener {
+            val enteredText = binding.textInputShareLink.text.toString().trim()
+            checkShareLink(enteredText)
+        }
+
         // QR Scan
         val scanButton = binding.btnScanQrcode
         val iptalQRscan = binding.cancelQrScan
 
         // Set the click listener on the button
         scanButton.setOnClickListener {
-            // When the button is clicked, perform the following actions:
 
-            // 1. Hide the main content container
-            binding.buttonPanel.visibility = View.GONE
+            isScanning = true // set the camera mode to scan
+
+            // 1. Hide the panels
+            visibilityPanelForLinks(false)
+            visibilityPanelForKahraman(false)
 
             // 2. Show the camera container (FrameLayout)
-            binding.cameraContainer.visibility = View.VISIBLE
-            iptalQRscan.visibility = View.VISIBLE
-            binding.overlayView.startOverlay()
+            updateCameraUI(true)
 
             // 3. Call the function to check permission and launch the camera
             requestCameraAndShow()
@@ -112,11 +133,58 @@ class MainActivity : AppCompatActivity() {
 
         // Set the click listener on iptal qr scan
         iptalQRscan.setOnClickListener {
-            // Release camera
-            //...
             stopScanning()
+        }
+    }
+
+    private fun checkShareLink(link: String){
+
+        val linkJWT = "https://kahramanai.com/jwt/"
+        if (link.startsWith(linkJWT, ignoreCase = true)) {
+            getLinkDataJWT(link.replaceFirst(linkJWT, ""))
+            return
+        }
+
+        val linkShared = "https://kahramanai.com/shared/"
+        if (link.startsWith(linkShared, ignoreCase = true)) {
+            getLinkDataShared(link.replaceFirst(linkShared, ""))
+            return
+        }
+
+        showSnackbar("Paylaşım linki geçerli değil!")
+    }
+
+    private fun getLinkDataJWT(jwt: String){
+        showLoadingDialog()
+
+        viewModel.routeJWTbundle(jwt)
+
+        // Observers for Retrofit
+        viewModel.postResult1.observe(this) { result ->
+
+            dismissLoadingDialog()
+
+            when (result) {
+                is NetworkResult.Success -> {
+                    // success state
+                    println(result.data)
+                }
+
+                is NetworkResult.Error -> {
+                    println(result)
+                }
+
+                is NetworkResult.Loading<*> -> {
+                    println("Loading data")
+                }
+            }
 
         }
+
+    }
+
+    private fun getLinkDataShared(jwt: String){
+        showLoadingDialog()
 
     }
 
@@ -146,6 +214,14 @@ class MainActivity : AppCompatActivity() {
                 binding.overlayView.startOverlay()
                 startBarcodeScanner(cameraProvider, cameraSelector, preview)
 
+                if (isScanning) {
+                    binding.overlayView.startOverlay()
+                    startBarcodeScanner(cameraProvider, cameraSelector, preview)
+                } else {
+                    binding.overlayView.startOverlay()
+                    startPhotoCapture(cameraProvider, cameraSelector, preview)
+                }
+
                 cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
             } catch(exc: Exception) {
                 Log.e(TAG, "Use case binding failed", exc)
@@ -155,6 +231,15 @@ class MainActivity : AppCompatActivity() {
 
     }
 
+    /* Photo Taking Functions */
+    private fun startPhotoCapture(cameraProvider: ProcessCameraProvider, cameraSelector: CameraSelector, preview: Preview) {
+        imageCapture = ImageCapture.Builder()
+            .build()
+
+        cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
+    }
+
+    /* Scanning Functions */
     @OptIn(ExperimentalGetImage::class)
     private fun startBarcodeScanner(cameraProvider: ProcessCameraProvider, cameraSelector: CameraSelector, preview: Preview) {
         val scanner = BarcodeScanning.getClient()
@@ -189,7 +274,6 @@ class MainActivity : AppCompatActivity() {
 
                         for (barcode in barcodes) {
                             val rawValue = barcode.rawValue
-                            parseQRcode(rawValue.toString())
                             handleQRcodeScanned(rawValue.toString())
                         }
                         stopScanning()
@@ -204,16 +288,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showLoadingDialog(){
+        val loadingDialog = LoadingDialogFragment()
+        loadingDialog.isCancelable = false
+        loadingDialog.show(supportFragmentManager, LOADING_DIALOG_TAG)
+    }
 
-
-    private fun parseQRcode(rawVal: String){
-        println("QR code $rawVal");
-        //jwt = rawVal;
+    private fun dismissLoadingDialog() {
+        val dialogFragment = supportFragmentManager.findFragmentByTag(LOADING_DIALOG_TAG) as? LoadingDialogFragment
+        if (dialogFragment != null && dialogFragment.isAdded) {
+            dialogFragment.dismiss()
+        }
     }
 
     private fun handleQRcodeScanned(qrValue: String){
         Log.d(TAG, qrValue)
-        //cameraCaptureButton.visibility = View.VISIBLE
+        stopScanning()
+        checkShareLink(qrValue)
     }
 
     override fun onDestroy() {
@@ -227,11 +318,25 @@ class MainActivity : AppCompatActivity() {
         // Call the comprehensive release function
         releaseCamera()
 
-        // Update UI elements
-        binding.cameraContainer.visibility = View.GONE
-        binding.cancelQrScan.visibility = View.GONE
-        binding.overlayView.stopOverlay()
-        binding.buttonPanel.visibility = View.VISIBLE
+        updateCameraUI(false)
+        visibilityPanelForKahraman(true)
+        visibilityPanelForLinks(true)
+    }
+
+    private fun updateCameraUI(goster: Boolean){
+        val visibilityStatus = if(goster) View.VISIBLE else View.GONE
+        binding.cameraContainer.visibility = visibilityStatus
+        binding.cancelQrScan.visibility = visibilityStatus
+        binding.scanViewText.visibility = visibilityStatus
+        if(isScanning){
+            if (goster) {
+                binding.overlayView.startOverlay()
+                binding.scanViewText.visibility = View.VISIBLE
+            }  else {
+                binding.overlayView.stopOverlay()
+                binding.scanViewText.visibility = View.GONE
+            }
+        }
     }
 
     private fun releaseCamera() {
@@ -289,4 +394,23 @@ class MainActivity : AppCompatActivity() {
             binding.btnUseShareLink.visibility = View.GONE
         }
     }
+
+    // Panels
+    private fun visibilityPanelForKahraman(goster: Boolean) {
+        binding.panelForKahraman.visibility = if (goster) View.VISIBLE else View.GONE
+    }
+
+    private fun visibilityPanelForLinks(goster: Boolean) {
+        binding.panelForLinks.visibility = if (goster) View.VISIBLE else View.GONE
+    }
+
+    fun Activity.showSnackbar(message: String) {
+        // A Snackbar needs a 'View' to attach to.
+        // We can find the root view of the activity.
+        val rootView = findViewById<View>(android.R.id.content)
+
+        Snackbar.make(rootView, message, Snackbar.LENGTH_SHORT).show()
+    }
+
+
 }

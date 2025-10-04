@@ -9,25 +9,45 @@
     tools:context=".MainActivity">
 
     <!-- Heading -->
-    <TextView
+    <LinearLayout
+        android:id="@+id/panelForKahraman"
+        android:orientation="vertical"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/app_name"
-        android:layout_marginTop="50dp"
-        android:padding="4dp"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:textColor="@android:color/holo_blue_dark"
-        android:paddingBottom="4dp"/>
+        android:padding="8dp">
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:layout_marginTop="50dp"
+            android:padding="4dp"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:textColor="@android:color/holo_blue_dark"
+            android:paddingBottom="4dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/upload_desc"
+            android:padding="8dp"
+            android:textSize="16sp"
+            android:gravity="center"
+            android:textColor="@android:color/darker_gray"
+            android:paddingBottom="4dp"/>
+    </LinearLayout>
 
     <TextView
+        android:id="@+id/scanViewText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/upload_desc"
-        android:padding="8dp"
-        android:textSize="16sp"
+        android:text="@string/scan_qr"
         android:gravity="center"
+        android:textStyle="bold"
+        android:padding="8dp"
+        android:visibility="gone"
+        android:textSize="14sp"
         android:textColor="@android:color/darker_gray"
         android:paddingBottom="4dp"/>
 
@@ -66,7 +86,7 @@
         android:paddingBottom="4dp"/>
 
     <LinearLayout
-        android:id="@+id/buttonPanel"
+        android:id="@+id/panelForLinks"
         android:orientation="vertical"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -113,16 +133,18 @@
             android:layout_height="wrap_content"
             android:text="@string/share_link_action" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/share_link_help"
+            android:padding="8dp"
+            android:textSize="12sp"
+            android:textColor="@android:color/darker_gray"
+            android:paddingBottom="4dp"/>
+
     </LinearLayout>
 
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/share_link_help"
-        android:padding="8dp"
-        android:textSize="12sp"
-        android:textColor="@android:color/darker_gray"
-        android:paddingBottom="4dp"/>
+
 
 </LinearLayout>

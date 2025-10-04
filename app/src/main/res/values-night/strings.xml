@@ -8,4 +8,7 @@
     <string name="share_link_action">Paylaşım linkini kullan</string>
     <string name="share_link_help">"QR kod veya paylaşım linki oluşturmak için Kahraman AI web uygulamasını kullanınız (kahramanai.com)"</string>
     <string name="iptal_qr">QR Kod Okumayı Sonlandır</string>
+    <string name="scan_qr">QR Kodu Okutun</string>
+    <string name="iptal_anything">İptal</string>
+    <string name="checking_link">Kontrol ediliyor...</string>
 </resources>
