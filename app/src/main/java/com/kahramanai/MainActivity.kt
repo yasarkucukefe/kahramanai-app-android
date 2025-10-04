@@ -35,10 +35,31 @@ import com.google.android.material.snackbar.Snackbar
 import com.kahramanai.ui.MainViewModel
 import androidx.activity.viewModels
 import com.kahramanai.util.NetworkResult
+import android.content.Context
+import android.content.SharedPreferences
+import android.net.Uri
+import androidx.camera.core.ImageCaptureException
+import com.kahramanai.data.ResponseJwtBundle
+import com.kahramanai.util.PhotoManager
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Locale
+import android.widget.ImageView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.kahramanai.data.PresignedUrlResponse
+import com.kahramanai.data.UploadRequest
+import com.kahramanai.util.getFileDetailsFromUri
+import com.kahramanai.util.getFileFromUri
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
 
     private val TAG = "Kahraman"
+
+    private lateinit var prefs: SharedPreferences
 
     private var cameraProvider: ProcessCameraProvider? = null
     private lateinit var imageCapture: ImageCapture
@@ -49,8 +70,12 @@ class MainActivity : AppCompatActivity() {
     private var isScanning = false
     private lateinit var binding: ActivityMainBinding
 
+    private lateinit var outputDirectory: File
+
     private val viewModel: MainViewModel by viewModels()
     private val LOADING_DIALOG_TAG = "loading_dialog"
+    private var bid: Int? = 0
+    private var cid: Int? = 0
 
     // 1. Initialize the permission launcher
     private val requestPermissionLauncher =
@@ -74,6 +99,32 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        prefs = getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
+
+        outputDirectory = getOutputDirectory()
+
+        // --- STEP 3: Observe the pending upload count ---
+        val uploadProgressBar = binding.uploadProgressBar
+        val uploadText = binding.uploadStatusTextView
+
+        lifecycleScope.launch {
+            // This coroutine will automatically restart when the activity is started
+            // and stop when the activity is stopped.
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.pendingUploads.collect { count ->
+                    // Update your UI based on the count
+                    if (count > 0) {
+                        uploadProgressBar.visibility = View.VISIBLE
+                        val uploadStatus = "${count} belge yükleniyor..."
+                        uploadText.text = uploadStatus
+                    } else {
+                        uploadProgressBar.visibility = View.GONE
+                        uploadText.text = "Belgenin fotoğrafını çekiniz."
+                    }
+                }
+            }
+        }
+
         // This listener works with enableEdgeToEdge() to add padding so your content doesn't get hidden by the system bars.
         ViewCompat.setOnApplyWindowInsetsListener(binding.main) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -84,8 +135,6 @@ class MainActivity : AppCompatActivity() {
         // Init camera components
         viewFinder = binding.viewFinder
         cameraExecutor = Executors.newSingleThreadExecutor()
-
-
 
         // Now that 'binding' is initialized, you can add your TextWatcher logic here.
         val shareLinkEditText = binding.textInputShareLink
@@ -135,9 +184,28 @@ class MainActivity : AppCompatActivity() {
         iptalQRscan.setOnClickListener {
             stopScanning()
         }
+
+        // Camera iptal
+        val iptalButton = binding.cancelPhoto
+
+        iptalButton.setOnClickListener {
+            stopCamera()
+        }
+
+        // Camera action
+        val captureImageButton = binding.cameraButton
+
+        captureImageButton.setOnClickListener {
+            takePhoto()
+        }
     }
 
     private fun checkShareLink(link: String){
+
+        if(link.length < 100) {
+            showSnackbar("Paylaşım linki geçerli değil!")
+            return
+        }
 
         val linkJWT = "https://kahramanai.com/jwt/"
         if (link.startsWith(linkJWT, ignoreCase = true)) {
@@ -154,38 +222,188 @@ class MainActivity : AppCompatActivity() {
         showSnackbar("Paylaşım linki geçerli değil!")
     }
 
+    // JWT TOKEN
     private fun getLinkDataJWT(jwt: String){
-        showLoadingDialog()
+
 
         viewModel.routeJWTbundle(jwt)
 
         // Observers for Retrofit
         viewModel.postResult1.observe(this) { result ->
 
-            dismissLoadingDialog()
-
             when (result) {
+
+                is NetworkResult.Loading<*> -> {
+                    showLoadingDialog()
+                }
+
                 is NetworkResult.Success -> {
                     // success state
                     println(result.data)
+                    dismissLoadingDialog()
+                    receivetJWTdata(result.data)
+                    val editor = prefs.edit()
+                    editor.putString("KAI_JWT_TOKEN", jwt)
+                    editor.putBoolean("KAI_IS_JWT", true)
+                    editor.apply()
                 }
 
                 is NetworkResult.Error -> {
                     println(result)
+                    dismissLoadingDialog()
+                    showSnackbar("Paylaşım linki geçerli değil!")
+                }
+            }
+        }
+    }
+
+    private fun receivetJWTdata (data: ResponseJwtBundle?) {
+
+        binding.companyName.text = data?.customer_name
+        val bundleName = "${data?.bundle_code} / ${data?.bundle_name}"
+        binding.bundleName.text = bundleName
+
+        bid = data?.bid
+        cid = data?.auto_id
+
+        visibilityPanelForKahraman(false)
+        visibilityPanelForLinks(false)
+        visibilityPanelForCompany(true)
+
+        isScanning = false
+        updateCameraUI(true)
+        requestCameraAndShow()
+    }
+
+
+    // Share Token
+    private fun getLinkDataShared(jwt: String){
+        showLoadingDialog()
+
+    }
+
+
+    private fun takePhoto() {
+        val filename = SimpleDateFormat(PhotoManager.FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis()) + ".jpg"
+        val photoFile = File(
+            outputDirectory,
+            filename
+        )
+
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+
+        imageCapture.takePicture(
+            outputOptions, ContextCompat.getMainExecutor(this), object : ImageCapture.OnImageSavedCallback {
+                override fun onError(exc: ImageCaptureException) {
+                    Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
                 }
 
-                is NetworkResult.Loading<*> -> {
-                    println("Loading data")
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    val savedUri = Uri.fromFile(photoFile)
+                    //val msg = "Photo capture succeeded: $savedUri"
+                    //Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
+                    handleImageCaptured(savedUri)
                 }
+            })
+    }
+
+    private fun continuePhotoCapture() {
+        val viewFinder = findViewById<PreviewView>(R.id.viewFinder)
+        val receiptView = findViewById<ImageView>(R.id.receipt_view)
+
+        receiptView.visibility = View.GONE
+        viewFinder.visibility = View.VISIBLE
+    }
+
+    private fun handleImageCaptured(imageUri: Uri){
+        val viewFinder = findViewById<PreviewView>(R.id.viewFinder)
+        val receiptView = findViewById<ImageView>(R.id.receipt_view)
+
+        // Make the camera preview invisible
+        viewFinder.visibility = View.GONE
+
+        // Set the captured image URI to the ImageView and make it visible
+        receiptView.setImageURI(imageUri)
+        receiptView.visibility = View.VISIBLE
+
+        // Process file
+        val fileDetails = getFileDetailsFromUri(this, imageUri)
+        val mimeType = fileDetails.mimeType
+        val fileSizeInBytes = fileDetails.fileSize
+        val uuid: UUID = UUID.randomUUID()
+
+        println("mime type ${mimeType}")
+        val postData = UploadRequest(cid,0,uuid.toString(),"-",fileSizeInBytes,".jpg",0,mimeType.toString())
+        postActionForUploadLink(imageUri, postData)
+    }
+
+    private fun postActionForUploadLink(imageUri: Uri, postData: UploadRequest) {
+        val isJWT = prefs.getBoolean("KAI_IS_JWT", true)
+        if (isJWT) {
+            postActionForUploadLinkJWT(imageUri, postData)
+        }
+    }
+
+    private fun postActionForUploadLinkJWT(imageUri: Uri, postData: UploadRequest) {
+        val JWT = prefs.getString("KAI_JWT_TOKEN", "------")
+
+        viewModel.routeJWTupload2_presigned(JWT, postData)
+
+        // Observers for Retrofit
+        viewModel.postResult2.observe(this) { result ->
+
+            when (result) {
+
+                is NetworkResult.Loading<*> -> {
+                    // Show some progress here
+                }
+
+                is NetworkResult.Success -> {
+                    // success state
+                    println(result.data)
+                    uploadFileNow(result.data, uri = imageUri)
+
+                }
+
+                is NetworkResult.Error -> {
+                    println(result)
+                    showSnackbar("Beklenmeyen bir hata oluştu!")
+                }
+
+
             }
 
         }
 
     }
 
-    private fun getLinkDataShared(jwt: String){
-        showLoadingDialog()
+    private fun uploadFileNow(presignedUrlResponse: PresignedUrlResponse?, uri: Uri) {
 
+        val uploadFile: File? = getFileFromUri(this, uri)
+
+        if (uploadFile != null && presignedUrlResponse != null) {
+            viewModel.uploadFileS3(presignedUrlResponse, uploadFile)
+
+            viewModel.postResult3.observe(this) { result ->
+
+                when (result) {
+
+                    is NetworkResult.Loading<*> -> {
+                        continuePhotoCapture()
+                    }
+
+                    is NetworkResult.Success -> {
+                        // success state
+                        println("Upload is successfull")
+                    }
+
+                    is NetworkResult.Error -> {
+                        println(result)
+                        showSnackbar("Beklenmeyen bir hata oluştu!")
+                    }
+                }
+            }
+        }
     }
 
     private fun startCamera() {
@@ -218,7 +436,7 @@ class MainActivity : AppCompatActivity() {
                     binding.overlayView.startOverlay()
                     startBarcodeScanner(cameraProvider, cameraSelector, preview)
                 } else {
-                    binding.overlayView.startOverlay()
+                    binding.overlayView.stopOverlay()
                     startPhotoCapture(cameraProvider, cameraSelector, preview)
                 }
 
@@ -323,17 +541,32 @@ class MainActivity : AppCompatActivity() {
         visibilityPanelForLinks(true)
     }
 
+    private fun stopCamera() {
+        // Call the comprehensive release function
+        releaseCamera()
+
+        updateCameraUI(false)
+        visibilityPanelForCompany(false)
+        visibilityPanelForKahraman(true)
+        visibilityPanelForLinks(true)
+
+    }
+
     private fun updateCameraUI(goster: Boolean){
         val visibilityStatus = if(goster) View.VISIBLE else View.GONE
         binding.cameraContainer.visibility = visibilityStatus
-        binding.cancelQrScan.visibility = visibilityStatus
-        binding.scanViewText.visibility = visibilityStatus
         if(isScanning){
+            binding.cancelQrScan.visibility = visibilityStatus
+            binding.scanViewText.visibility = visibilityStatus
             if (goster) {
-                binding.overlayView.startOverlay()
                 binding.scanViewText.visibility = View.VISIBLE
             }  else {
-                binding.overlayView.stopOverlay()
+                binding.scanViewText.visibility = View.GONE
+            }
+        } else {
+            binding.cancelQrScan.visibility = View.GONE
+            binding.scanViewText.visibility = View.GONE
+            if (goster) {
                 binding.scanViewText.visibility = View.GONE
             }
         }
@@ -404,12 +637,25 @@ class MainActivity : AppCompatActivity() {
         binding.panelForLinks.visibility = if (goster) View.VISIBLE else View.GONE
     }
 
+    private fun visibilityPanelForCompany(goster: Boolean) {
+        binding.panelForCompany.visibility = if (goster) View.VISIBLE else View.GONE
+        binding.panelForButtons.visibility = if (goster) View.VISIBLE else View.GONE
+    }
+
     fun Activity.showSnackbar(message: String) {
         // A Snackbar needs a 'View' to attach to.
         // We can find the root view of the activity.
         val rootView = findViewById<View>(android.R.id.content)
 
         Snackbar.make(rootView, message, Snackbar.LENGTH_SHORT).show()
+    }
+
+    private fun getOutputDirectory(): File {
+        val mediaDir = externalMediaDirs.firstOrNull()?.let {
+            File(it, resources.getString(R.string.app_name)).apply { mkdirs() }
+        }
+        return if (mediaDir != null && mediaDir.exists())
+            mediaDir else filesDir
     }
 
 

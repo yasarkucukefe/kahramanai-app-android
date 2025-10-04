@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:orientation="vertical"
     android:id="@+id/main"
@@ -38,6 +39,44 @@
             android:paddingBottom="4dp"/>
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/panelForCompany"
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:padding="8dp">
+        <TextView
+            android:id="@+id/companyName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/company_name"
+            android:padding="4dp"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
+            android:paddingBottom="4dp"/>
+
+        <TextView
+            android:id="@+id/bundleName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/bundle_code_name"
+            android:padding="4dp"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:paddingBottom="4dp"/>
+
+        <TextView
+            android:id="@+id/cancel_photo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:text="@string/iptal_photo"
+            android:textColor="@android:color/holo_red_dark"
+            android:textSize="12sp" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/scanViewText"
         android:layout_width="match_parent"
@@ -47,7 +86,7 @@
         android:textStyle="bold"
         android:padding="8dp"
         android:visibility="gone"
-        android:textSize="14sp"
+        android:textSize="16sp"
         android:textColor="@android:color/darker_gray"
         android:paddingBottom="4dp"/>
 
@@ -70,6 +109,14 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@android:color/transparent" />
+
+        <!-- Receipt Image -->
+        <ImageView
+            android:id="@+id/receipt_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter"
+            android:visibility="gone" />
 
     </FrameLayout>
 
@@ -143,6 +190,62 @@
             android:paddingBottom="4dp"/>
 
     </LinearLayout>
+
+    <!-- Button row fixed at bottom -->
+    <LinearLayout
+        android:id="@+id/panelForButtons"
+        style="?android:attr/buttonBarStyle"
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:visibility="gone"
+        android:gravity="center_horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/cameraButton"
+            style="@style/Widget.MaterialComponents.Button.Icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:icon="@drawable/baseline_photo_camera_24"
+            app:iconPadding="0dp"
+            app:iconGravity="textStart"
+            android:insetLeft="0dp"
+            android:insetTop="0dp"
+            android:insetRight="0dp"
+            android:insetBottom="0dp" />
+
+        <LinearLayout
+            android:id="@+id/upload_status_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="5dp"
+            android:layout_marginTop="8dp"
+            android:layout_gravity="center"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ProgressBar
+                android:id="@+id/upload_progress_bar"
+                style="?android:attr/progressBarStyle"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:indeterminate="true" />
+
+            <TextView
+                android:id="@+id/upload_status_text_view"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textSize="12sp"
+                tools:text="Yükleniyor" />
+
+        </LinearLayout>
+
+
+    </LinearLayout>
+
+
 
 
 

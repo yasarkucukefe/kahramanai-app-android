@@ -11,4 +11,7 @@
     <string name="scan_qr">QR Kodu Okutun</string>
     <string name="iptal_anything">İptal</string>
     <string name="checking_link">Kontrol ediliyor...</string>
+    <string name="company_name">Şirket Adı</string>
+    <string name="bundle_code_name">Bundle Code / Name</string>
+    <string name="iptal_photo">Kapat</string>
 </resources>
