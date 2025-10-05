@@ -70,5 +70,8 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.activity.ktx)
 
+    implementation(libs.fragment.ktx)
+    implementation(libs.fragment)
+
 
 }

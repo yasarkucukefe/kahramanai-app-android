@@ -57,6 +57,8 @@ import com.kahramanai.util.getFileFromUri
 import kotlinx.coroutines.launch
 import java.util.UUID
 import androidx.core.net.toUri
+import com.kahramanai.data.SelectableItem
+import com.kahramanai.data.ShrBundle
 
 class MainActivity : AppCompatActivity() {
 
@@ -81,6 +83,8 @@ class MainActivity : AppCompatActivity() {
     private var cid: Int? = 0
 
     private var linkVar = false
+
+
 
     // 1. Initialize the permission launcher
     private val requestPermissionLauncher =
@@ -155,8 +159,6 @@ class MainActivity : AppCompatActivity() {
         shareLinkEditText.addTextChangedListener(textWatcher)
 
         // Share Link
-        binding.textInputShareLink.setText("https://kahramanai.com/shared/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgsImNpZCI6IjQiLCJiaWQiOjAsImV4cCI6NDg3Nzc2MzI5NH0.SvPp3gmoPPeXsTVcLpG_RUXqKe-yZFPjSmBgXQ2t7mA")
-        //binding.textInputShareLink.setText("https://kahramanai.com/shared/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgsImNpZCI6IjQiLCJiaWQiOiI1IiwiZXhwIjo0ODgxNzI4Mjc5fQ.00e10g60lR4mDDE4kiHtIfwCW6A21CqDrZZvHYeN51k")
         val shareLinkButton = binding.btnUseShareLink
         shareLinkButton.setOnClickListener {
             val enteredText = binding.textInputShareLink.text.toString().trim()
@@ -217,10 +219,26 @@ class MainActivity : AppCompatActivity() {
             openUrlInBrowser(link)
         }
 
+        // Kahramanai.com
+        val openKai = binding.txtKaiLink
+        openKai.setOnClickListener {
+            openUrlInBrowser("https://kahramanai.com")
+        }
+
         // Clear the link text content
         val clearLinkTxt = binding.textClearLink
         clearLinkTxt.setOnClickListener {
             binding.textInputShareLink.setText("")
+        }
+
+        // Bundle selection
+        supportFragmentManager.setFragmentResultListener(SelectionDialogFragment.REQUEST_KEY, this) { requestKey, bundle ->
+            val selectedItemId = bundle.getInt(SelectionDialogFragment.RESULT_KEY)
+            bid = selectedItemId
+            handleBundleDataComplete()
+            val shareToken : String? = prefs.getString("KAI_SHARE_TOKEN", "------")
+            Log.d(TAG, "bid: $bid ")
+            getBundleData(shareToken, bid!!)
         }
 
         // Other actions
@@ -235,6 +253,7 @@ class MainActivity : AppCompatActivity() {
             // Start the activity to open the browser
             startActivity(intent)
         } catch (e: ActivityNotFoundException) {
+            Log.e(TAG, "Error opening URL in browser: ${e.message}")
             // This happens if the user does not have a web browser installed.
             Toast.makeText(this, "Web tarayıcısı bulunamadı", Toast.LENGTH_SHORT).show()
         }
@@ -317,10 +336,41 @@ class MainActivity : AppCompatActivity() {
                 is NetworkResult.Loading<*> -> { Toast.makeText(this, "Mükellef bilgileri alınıyor...", Toast.LENGTH_SHORT).show() }
                 is NetworkResult.Success<*> -> {
                     val bundleList = result.data
-                    print(bundleList)
+                    showBundlisList(bundleList, shareToken)
                 }
             }
         }
+    }
+
+    private fun showBundlisList (bundleList: List<ShrBundle>?, shareToken: String){
+
+        val bundleItems = bundleList
+            ?.filter { it.status == 1 }
+            ?.map { bundle ->
+                val bundleName = "${bundle.bundleCode} / ${bundle.bundleName}"
+                SelectableItem(bundle.autoId, bundleName)
+            }
+
+        if (bundleItems?.isEmpty() ?: true){
+            showSnackbar("Mükellefe ait etiket listesi bulunamadı!")
+            return
+        }
+
+        if (bundleItems.size == 1){
+            val seciliItem: SelectableItem? = bundleItems.firstOrNull()
+            if (seciliItem != null){
+                bid = seciliItem.id
+                handleBundleDataComplete()
+                getBundleData(shareToken, bid!!)
+            }
+            return
+        }
+
+        val dialogFragment = SelectionDialogFragment.newInstance(bundleItems)
+
+        dialogFragment.show(supportFragmentManager, SelectionDialogFragment.TAG)
+
+
     }
 
     private fun handleBundleDataComplete () {
@@ -335,7 +385,7 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    private fun getBundleData(shareToken: String, bid: Int) {
+    private fun getBundleData(shareToken: String?, bid: Int) {
 
         Log.d(TAG, "Share token: $shareToken")
 
@@ -652,9 +702,6 @@ class MainActivity : AppCompatActivity() {
 
             try {
                 cameraProvider.unbindAll()
-
-                binding.overlayView.startOverlay()
-                startBarcodeScanner(cameraProvider, cameraSelector, preview)
 
                 if (isScanning) {
                     binding.overlayView.startOverlay()

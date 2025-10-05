@@ -140,7 +140,7 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun routeSharedBundleData(shareToken: String, bid: Int) {
+    fun routeSharedBundleData(shareToken: String?, bid: Int) {
         viewModelScope.launch {
             _postResult7.postValue(NetworkResult.Loading()) // Notify UI that we are loading
             try {
