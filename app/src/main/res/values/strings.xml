@@ -14,4 +14,6 @@
     <string name="bundle_code_name">Bundle Code / Name</string>
     <string name="iptal_photo">Kapat (X)</string>
     <string name="use_last_link">En son paylaşım linkini kullan</string>
+    <string name="open_link">Linki Web tarayıcısında aç</string>
+    <string name="sil_link">Sil</string>
 </resources>

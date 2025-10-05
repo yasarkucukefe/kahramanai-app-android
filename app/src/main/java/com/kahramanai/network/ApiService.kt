@@ -49,6 +49,11 @@ interface ApiService {
         @Body requestBody: PostRequestBid
     ): Response<ShrBundle>
 
+    @POST("shr_bundles")
+    suspend fun route_shared_bundle_list(
+        @Header("Authorization") authToken: String
+    ): Response<List<ShrBundle>>
+
     @POST("shr_userCredits")
     suspend fun route_shared_userCredits(
         @Header("Authorization") authToken: String

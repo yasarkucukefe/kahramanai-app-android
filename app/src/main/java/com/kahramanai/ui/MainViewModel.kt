@@ -64,9 +64,35 @@ class MainViewModel : ViewModel() {
     private val _postResult9 = SingleLiveEvent<NetworkResult<PresignedUrlResponse>>()
     val postResult9: LiveData<NetworkResult<PresignedUrlResponse>> = _postResult9
 
+    private val _postResult10 = SingleLiveEvent<NetworkResult<List<ShrBundle>>>()
+    val postResult10: LiveData<NetworkResult<List<ShrBundle>>> = _postResult10
+
 
 
     // SHARE TOKEN ROUTES
+
+    fun routeSharedListCompanyBundles(shareToken: String?) {
+        viewModelScope.launch {
+            _postResult10.postValue(NetworkResult.Loading()) // Notify UI that we are loading
+            try {
+                val authToken = "Bearer $shareToken"
+
+                // Call the new API method. Note there is no request body object.
+                val response = RetrofitClient.instance.route_shared_bundle_list(authToken)
+
+                if (response.isSuccessful) {
+                    _postResult10.postValue(NetworkResult.Success(response.body()!!))
+                } else {
+                    // Send a detailed error state
+                    val errorMsg = response.errorBody()?.string() ?: "Unknown Error"
+                    _postResult10.postValue(NetworkResult.Error(response.code(), errorMsg))
+                }
+            } catch (e: Exception) {
+                // Send a generic exception state
+                _postResult10.postValue(NetworkResult.Error(0, e.message ?: "An exception occurred"))
+            }
+        }
+    }
 
     fun routeSharedUploadGetPresigned(shareToken: String?, postData: UploadRequest) {
         viewModelScope.launch {

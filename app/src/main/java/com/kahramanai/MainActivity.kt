@@ -2,6 +2,7 @@ package com.kahramanai
 
 import android.Manifest
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.text.Editable
@@ -36,6 +37,7 @@ import com.kahramanai.ui.MainViewModel
 import androidx.activity.viewModels
 import com.kahramanai.util.NetworkResult
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import androidx.camera.core.ImageCaptureException
@@ -54,6 +56,7 @@ import com.kahramanai.util.getFileDetailsFromUri
 import com.kahramanai.util.getFileFromUri
 import kotlinx.coroutines.launch
 import java.util.UUID
+import androidx.core.net.toUri
 
 class MainActivity : AppCompatActivity() {
 
@@ -152,8 +155,8 @@ class MainActivity : AppCompatActivity() {
         shareLinkEditText.addTextChangedListener(textWatcher)
 
         // Share Link
-        //binding.textInputShareLink.setText("https://kahramanai.com/shared/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgsImNpZCI6IjQiLCJiaWQiOjAsImV4cCI6NDg3Nzc2MzI5NH0.SvPp3gmoPPeXsTVcLpG_RUXqKe-yZFPjSmBgXQ2t7mA")
-        binding.textInputShareLink.setText("https://kahramanai.com/shared/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgsImNpZCI6IjQiLCJiaWQiOiI1IiwiZXhwIjo0ODgxNzI4Mjc5fQ.00e10g60lR4mDDE4kiHtIfwCW6A21CqDrZZvHYeN51k")
+        binding.textInputShareLink.setText("https://kahramanai.com/shared/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgsImNpZCI6IjQiLCJiaWQiOjAsImV4cCI6NDg3Nzc2MzI5NH0.SvPp3gmoPPeXsTVcLpG_RUXqKe-yZFPjSmBgXQ2t7mA")
+        //binding.textInputShareLink.setText("https://kahramanai.com/shared/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgsImNpZCI6IjQiLCJiaWQiOiI1IiwiZXhwIjo0ODgxNzI4Mjc5fQ.00e10g60lR4mDDE4kiHtIfwCW6A21CqDrZZvHYeN51k")
         val shareLinkButton = binding.btnUseShareLink
         shareLinkButton.setOnClickListener {
             val enteredText = binding.textInputShareLink.text.toString().trim()
@@ -207,11 +210,35 @@ class MainActivity : AppCompatActivity() {
             checkShareLink(lastToken.toString())
         }
 
+        // Open the link
+        val openLinkTxt = binding.textOpenLink
+        openLinkTxt.setOnClickListener {
+            val link = binding.textInputShareLink.text.toString().trim()
+            openUrlInBrowser(link)
+        }
+
+        // Clear the link text content
+        val clearLinkTxt = binding.textClearLink
+        clearLinkTxt.setOnClickListener {
+            binding.textInputShareLink.setText("")
+        }
 
         // Other actions
         checkTheLastLink()
     }
 
+    private fun openUrlInBrowser(url: String) {
+        // Create an Intent to view the URL
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+
+        try {
+            // Start the activity to open the browser
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            // This happens if the user does not have a web browser installed.
+            Toast.makeText(this, "Web tarayıcısı bulunamadı", Toast.LENGTH_SHORT).show()
+        }
+    }
 
 
     private fun checkShareLink(link: String){
@@ -270,8 +297,27 @@ class MainActivity : AppCompatActivity() {
                         if(it > 0) {
                             handleBundleDataComplete()
                             getBundleData(shareToken, bid!!)
+                        } else {
+                            handleCompanyShareLink(shareToken)
                         }
                     }
+                }
+            }
+        }
+    }
+
+    private fun handleCompanyShareLink (shareToken: String) {
+
+        viewModel.routeSharedListCompanyBundles(shareToken)
+
+        viewModel.postResult10.observe(this) { result ->
+
+            when (result) {
+                is NetworkResult.Error<*> -> { showSnackbar("Paylaşım linki geçerli değil!") }
+                is NetworkResult.Loading<*> -> { Toast.makeText(this, "Mükellef bilgileri alınıyor...", Toast.LENGTH_SHORT).show() }
+                is NetworkResult.Success<*> -> {
+                    val bundleList = result.data
+                    print(bundleList)
                 }
             }
         }
@@ -700,6 +746,7 @@ class MainActivity : AppCompatActivity() {
     private fun handleQRcodeScanned(qrValue: String){
         Log.d(TAG, qrValue)
         stopScanning()
+        binding.textInputShareLink.setText(qrValue)
         checkShareLink(qrValue)
     }
 
@@ -800,9 +847,11 @@ class MainActivity : AppCompatActivity() {
         if (Patterns.WEB_URL.matcher(input).matches()) {
             // The input is a valid URL, show the button
             binding.btnUseShareLink.visibility = View.VISIBLE
+            binding.panelForLinkActions.visibility = View.VISIBLE
         } else {
             // The input is not a valid URL, hide the button
             binding.btnUseShareLink.visibility = View.GONE
+            binding.panelForLinkActions.visibility = View.GONE
         }
     }
 
