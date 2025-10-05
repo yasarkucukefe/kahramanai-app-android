@@ -14,4 +14,5 @@
     <string name="company_name">Şirket Adı</string>
     <string name="bundle_code_name">Bundle Code / Name</string>
     <string name="iptal_photo">Kapat</string>
+    <string name="use_last_link">En son kullanılan paylaşımı yükle</string>
 </resources>

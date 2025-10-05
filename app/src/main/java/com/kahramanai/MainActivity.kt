@@ -77,6 +77,8 @@ class MainActivity : AppCompatActivity() {
     private var bid: Int? = 0
     private var cid: Int? = 0
 
+    private var linkVar = false
+
     // 1. Initialize the permission launcher
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
@@ -119,7 +121,7 @@ class MainActivity : AppCompatActivity() {
                         uploadText.text = uploadStatus
                     } else {
                         uploadProgressBar.visibility = View.GONE
-                        uploadText.text = "Belgenin fotoğrafını çekiniz."
+                        getUserCredits()
                     }
                 }
             }
@@ -150,11 +152,9 @@ class MainActivity : AppCompatActivity() {
         shareLinkEditText.addTextChangedListener(textWatcher)
 
         // Share Link
+        //binding.textInputShareLink.setText("https://kahramanai.com/shared/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgsImNpZCI6IjQiLCJiaWQiOjAsImV4cCI6NDg3Nzc2MzI5NH0.SvPp3gmoPPeXsTVcLpG_RUXqKe-yZFPjSmBgXQ2t7mA")
+        binding.textInputShareLink.setText("https://kahramanai.com/shared/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjgsImNpZCI6IjQiLCJiaWQiOiI1IiwiZXhwIjo0ODgxNzI4Mjc5fQ.00e10g60lR4mDDE4kiHtIfwCW6A21CqDrZZvHYeN51k")
         val shareLinkButton = binding.btnUseShareLink
-
-        // REMOVE THIS LINE IN PROD
-        binding.textInputShareLink.setText("https://kahramanai.com/jwt/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo4LCJiaWQiOiI1IiwiZXhwIjoxNzU5NjYyNTU0fQ.Uxjv5BxibJRtCGJTKs2W9bXK-IcUQG1tHI7LxxiGUgw")
-
         shareLinkButton.setOnClickListener {
             val enteredText = binding.textInputShareLink.text.toString().trim()
             checkShareLink(enteredText)
@@ -198,7 +198,21 @@ class MainActivity : AppCompatActivity() {
         captureImageButton.setOnClickListener {
             takePhoto()
         }
+
+        // Load the last token
+        val loadLastToken = binding.btnUseLastLink
+        loadLastToken.setOnClickListener {
+            val lastToken = prefs.getString("KAI_URL_LINK", "")
+            binding.textInputShareLink.setText(lastToken)
+            checkShareLink(lastToken.toString())
+        }
+
+
+        // Other actions
+        checkTheLastLink()
     }
+
+
 
     private fun checkShareLink(link: String){
 
@@ -209,22 +223,111 @@ class MainActivity : AppCompatActivity() {
 
         val linkJWT = "https://kahramanai.com/jwt/"
         if (link.startsWith(linkJWT, ignoreCase = true)) {
-            getLinkDataJWT(link.replaceFirst(linkJWT, ""))
+            val jwt: String = link.replaceFirst(linkJWT, "")
+            getLinkDataJWT(jwt, link)
             return
         }
 
         val linkShared = "https://kahramanai.com/shared/"
         if (link.startsWith(linkShared, ignoreCase = true)) {
-            getLinkDataShared(link.replaceFirst(linkShared, ""))
+            val token: String = link.replaceFirst(linkShared, "")
+            getLinkDataShared(token, link)
             return
         }
 
         showSnackbar("Paylaşım linki geçerli değil!")
     }
 
-    // JWT TOKEN
-    private fun getLinkDataJWT(jwt: String){
+    // SHARE TOKEN
+    private fun getLinkDataShared(shareToken: String, link: String){
 
+        viewModel.routeSharedTokenCheck(shareToken)
+
+        viewModel.postResult5.observe(this) { result ->
+
+            when (result) {
+                is NetworkResult.Error<*> -> { dismissLoadingDialog(); showSnackbar("Paylaşım linki geçerli değil!") }
+                is NetworkResult.Loading<*> -> { showLoadingDialog() }
+                is NetworkResult.Success<*> -> {
+                    dismissLoadingDialog()
+
+                    bid = result.data?.bid
+                    cid = result.data?.cid
+
+                    val editor = prefs.edit()
+                    editor.putString("KAI_SHARE_TOKEN", shareToken)
+                    editor.putString("KAI_URL_LINK", link)
+                    editor.putBoolean("KAI_IS_JWT", false)
+                    editor.putBoolean("KAI_LINK_VAR", true)
+                    editor.apply()
+                    linkVar = true
+                    //
+                    checkTheLastLink()
+
+                    getCompanyData(shareToken)
+
+                    bid?.let {
+                        if(it > 0) {
+                            handleBundleDataComplete()
+                            getBundleData(shareToken, bid!!)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun handleBundleDataComplete () {
+
+        visibilityPanelForKahraman(false)
+        visibilityPanelForLinks(false)
+        visibilityPanelForCompany(true)
+
+        isScanning = false
+        updateCameraUI(true)
+        requestCameraAndShow()
+
+    }
+
+    private fun getBundleData(shareToken: String, bid: Int) {
+
+        Log.d(TAG, "Share token: $shareToken")
+
+        viewModel.routeSharedBundleData(shareToken, bid)
+
+        viewModel.postResult7.observe(this) { result ->
+            when (result) {
+                is NetworkResult.Error<*> -> { showSnackbar("Paylaşım linki geçerli değil!") }
+                is NetworkResult.Loading<*> -> {}
+                is NetworkResult.Success<*> -> {
+                    val bundle_code = result.data?.bundleCode
+                    val bundle_name = result.data?.bundleName
+                    val bundleCodeName = "$bundle_code / $bundle_name"
+                    binding.bundleName.text = bundleCodeName
+                }
+            }
+        }
+    }
+    private fun getCompanyData(shareToken: String) {
+
+        Log.d(TAG, "Share token: $shareToken")
+
+        viewModel.routeSharedCustomerData(shareToken)
+
+        viewModel.postResult6.observe(this) { result ->
+            when (result) {
+                is NetworkResult.Error<*> -> { showSnackbar("Paylaşım linki geçerli değil!") }
+                is NetworkResult.Loading<*> -> {}
+                is NetworkResult.Success<*> -> {
+                    val customer_name = result.data?.customerName
+                    binding.companyName.text = customer_name
+                }
+            }
+        }
+    }
+
+    // JWT TOKEN
+    private fun getLinkDataJWT(jwt: String, urlLink: String){
 
         viewModel.routeJWTbundle(jwt)
 
@@ -239,13 +342,17 @@ class MainActivity : AppCompatActivity() {
 
                 is NetworkResult.Success -> {
                     // success state
-                    println(result.data)
+                    // println(result.data)
                     dismissLoadingDialog()
-                    receivetJWTdata(result.data)
+                    receivedJWTdata(result.data)
                     val editor = prefs.edit()
                     editor.putString("KAI_JWT_TOKEN", jwt)
+                    editor.putString("KAI_URL_LINK", urlLink)
                     editor.putBoolean("KAI_IS_JWT", true)
+                    editor.putBoolean("KAI_LINK_VAR", true)
                     editor.apply()
+                    //
+                    checkTheLastLink()
                 }
 
                 is NetworkResult.Error -> {
@@ -257,11 +364,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun receivetJWTdata (data: ResponseJwtBundle?) {
+    private fun receivedJWTdata (data: ResponseJwtBundle?) {
 
         binding.companyName.text = data?.customer_name
         val bundleName = "${data?.bundle_code} / ${data?.bundle_name}"
         binding.bundleName.text = bundleName
+        linkVar = true
 
         bid = data?.bid
         cid = data?.auto_id
@@ -274,14 +382,6 @@ class MainActivity : AppCompatActivity() {
         updateCameraUI(true)
         requestCameraAndShow()
     }
-
-
-    // Share Token
-    private fun getLinkDataShared(jwt: String){
-        showLoadingDialog()
-
-    }
-
 
     private fun takePhoto() {
         val filename = SimpleDateFormat(PhotoManager.FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis()) + ".jpg"
@@ -333,7 +433,7 @@ class MainActivity : AppCompatActivity() {
         val uuid: UUID = UUID.randomUUID()
 
         println("mime type ${mimeType}")
-        val postData = UploadRequest(cid,0,uuid.toString(),"-",fileSizeInBytes,".jpg",0,mimeType.toString())
+        val postData = UploadRequest(cid, bid,0,uuid.toString(),"-",fileSizeInBytes,".jpg",0,mimeType.toString())
         postActionForUploadLink(imageUri, postData)
     }
 
@@ -341,7 +441,39 @@ class MainActivity : AppCompatActivity() {
         val isJWT = prefs.getBoolean("KAI_IS_JWT", true)
         if (isJWT) {
             postActionForUploadLinkJWT(imageUri, postData)
+        } else {
+            postActionForUploadLinkForShared(imageUri, postData)
         }
+    }
+
+    private fun postActionForUploadLinkForShared(imageUri: Uri, postData: UploadRequest) {
+        val shareToken = prefs.getString("KAI_SHARE_TOKEN", "------")
+
+        viewModel.routeSharedUploadGetPresigned(shareToken, postData)
+
+        // Observers for Retrofit
+        viewModel.postResult9.observe(this) { result ->
+
+            when (result) {
+
+                is NetworkResult.Loading<*> -> {
+                    // Show some progress here
+                }
+
+                is NetworkResult.Success -> {
+                    // success state
+                    println(result.data)
+                    uploadFileNow(result.data, uri = imageUri)
+
+                }
+
+                is NetworkResult.Error -> {
+                    println(result)
+                    showSnackbar("Beklenmeyen bir hata oluştu!")
+                }
+            }
+        }
+
     }
 
     private fun postActionForUploadLinkJWT(imageUri: Uri, postData: UploadRequest) {
@@ -374,6 +506,52 @@ class MainActivity : AppCompatActivity() {
             }
 
         }
+
+    }
+
+    private fun getUserCredits() {
+
+        if (!linkVar) { return }
+
+        val isJWT = prefs.getBoolean("KAI_IS_JWT", true)
+        if (isJWT) {
+            val jwt : String? = prefs.getString("KAI_JWT_TOKEN","---------")
+            viewModel.routeJWTuserCredits(jwt)
+
+            viewModel.postResult4.observe(this) { result ->
+
+                when (result) {
+                    is NetworkResult.Error<*> -> { showSnackbar("Beklenmeyen bir hata oluştu!")}
+                    is NetworkResult.Loading<*> -> {}
+                    is NetworkResult.Success<*> -> {
+                        val credits = result.data?.credits
+                        val aiCredits = "AI Token: $credits"
+                        binding.uploadStatusTextView.text = aiCredits
+                    }
+                }
+
+            }
+        } else {
+            val shareToken:String? = prefs.getString("KAI_SHARE_TOKEN","---------")
+
+            viewModel.routeSharedUserCredits(shareToken)
+
+            viewModel.postResult8.observe(this) { result ->
+
+                when (result) {
+                    is NetworkResult.Error<*> -> { showSnackbar("Beklenmeyen bir hata oluştu!")}
+                    is NetworkResult.Loading<*> -> {}
+                    is NetworkResult.Success<*> -> {
+                        val credits = result.data?.credits
+                        val aiCredits = "AI Token: $credits"
+                        binding.uploadStatusTextView.text = aiCredits
+                    }
+                }
+
+            }
+
+        }
+
 
     }
 
@@ -640,6 +818,18 @@ class MainActivity : AppCompatActivity() {
     private fun visibilityPanelForCompany(goster: Boolean) {
         binding.panelForCompany.visibility = if (goster) View.VISIBLE else View.GONE
         binding.panelForButtons.visibility = if (goster) View.VISIBLE else View.GONE
+        if ( goster ) {
+            getUserCredits()
+        }
+    }
+
+    private fun checkTheLastLink () {
+        val linkVar = prefs.getBoolean("KAI_LINK_VAR", false)
+        if (linkVar) {
+            binding.btnUseLastLink.visibility = View.VISIBLE
+        } else {
+            binding.btnUseLastLink.visibility = View.GONE
+        }
     }
 
     fun Activity.showSnackbar(message: String) {
