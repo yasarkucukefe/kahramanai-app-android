@@ -18,4 +18,5 @@
     <string name="sil_link">Sil</string>
     <string name="dialog_title">Etiket seçiniz:</string>
     <string name="kahramanai_link">kahramanai.com</string>
+    <string name="receipt_image">Receipt view</string>
 </resources>

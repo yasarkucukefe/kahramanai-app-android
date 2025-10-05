@@ -47,6 +47,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 import android.widget.ImageView
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -180,6 +181,8 @@ class MainActivity : AppCompatActivity() {
 
             // 2. Show the camera container (FrameLayout)
             updateCameraUI(true)
+
+            updateCameraContainerConstraints(R.id.scanViewText, R.id.cancel_qr_scan)
 
             // 3. Call the function to check permission and launch the camera
             requestCameraAndShow()
@@ -916,6 +919,7 @@ class MainActivity : AppCompatActivity() {
         binding.panelForButtons.visibility = if (goster) View.VISIBLE else View.GONE
         if ( goster ) {
             getUserCredits()
+            updateCameraContainerConstraints(R.id.panelForCompany, R.id.panelForButtons)
         }
     }
 
@@ -942,6 +946,36 @@ class MainActivity : AppCompatActivity() {
         }
         return if (mediaDir != null && mediaDir.exists())
             mediaDir else filesDir
+    }
+
+    private fun updateCameraContainerConstraints(topAnchorId: Int, bottomAnchorId: Int) {
+        val constraintSet = ConstraintSet()
+        // Clone the existing constraints from the root layout
+        constraintSet.clone(binding.main)
+
+        // Clear the existing top constraint of the camera container
+        constraintSet.clear(R.id.camera_container, ConstraintSet.TOP)
+        constraintSet.clear(R.id.camera_container, ConstraintSet.BOTTOM)
+
+
+        // Set the new top constraint to connect to the bottom of the new anchor view
+        constraintSet.connect(
+            R.id.camera_container,
+            ConstraintSet.TOP,
+            topAnchorId,
+            ConstraintSet.BOTTOM
+        )
+
+        // Set the new BOTTOM constraint
+        constraintSet.connect(
+            R.id.camera_container,
+            ConstraintSet.BOTTOM,
+            bottomAnchorId,
+            ConstraintSet.TOP
+        )
+
+        // Apply the modified constraints back to the layout
+        constraintSet.applyTo(binding.main)
     }
 
 
