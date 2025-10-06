@@ -62,7 +62,6 @@ import com.kahramanai.data.ShrBundle
 import com.kahramanai.util.compressImage
 import com.kahramanai.util.deleteFileFromUri
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
@@ -521,19 +520,13 @@ class MainActivity : AppCompatActivity() {
 
         receiptView.visibility = View.GONE
         viewFinder.visibility = View.VISIBLE
+        binding.cameraButton.isEnabled = true
     }
 
     private fun handleImageCaptured(imageUri: Uri){
 
         val cameraButton = binding.cameraButton
         cameraButton.isEnabled = false
-
-        lifecycleScope.launch {
-            // Wait for 3 seconds so the user can view the receipt to be uploaded.
-            delay(3000)
-            cameraButton.isEnabled = true
-        }
-
 
         val viewFinder = findViewById<PreviewView>(R.id.viewFinder)
         val receiptView = findViewById<ImageView>(R.id.receipt_view)
