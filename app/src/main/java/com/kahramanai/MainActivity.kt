@@ -59,6 +59,10 @@ import java.util.UUID
 import androidx.core.net.toUri
 import com.kahramanai.data.SelectableItem
 import com.kahramanai.data.ShrBundle
+import com.kahramanai.util.compressImage
+import com.kahramanai.util.deleteFileFromUri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -338,13 +342,14 @@ class MainActivity : AppCompatActivity() {
                 is NetworkResult.Loading<*> -> { }
                 is NetworkResult.Success<*> -> {
                     val bundleList = result.data
-                    showBundlisList(bundleList, shareToken)
+                    dismissLoadingDialog()
+                    showBundlisList(bundleList)
                 }
             }
         }
     }
 
-    private fun showBundlisList (bundleList: List<ShrBundle>?, shareToken: String){
+    private fun showBundlisList (bundleList: List<ShrBundle>?){
 
         val bundleItems = bundleList
             ?.filter { it.status == 1 }
@@ -363,7 +368,9 @@ class MainActivity : AppCompatActivity() {
             if (seciliItem != null){
                 bid = seciliItem.id
                 handleBundleDataComplete()
-                getBundleData(shareToken, bid!!)
+                val bundleCodeName = seciliItem.name
+                binding.bundleName.text = bundleCodeName
+                //getBundleData(shareToken, bid!!)
             }
             return
         }
@@ -529,14 +536,33 @@ class MainActivity : AppCompatActivity() {
         receiptView.visibility = View.VISIBLE
 
         // Process file
-        val fileDetails = getFileDetailsFromUri(this, imageUri)
+        val fileDetails = getFileDetailsFromUri( imageUri)
         val mimeType = fileDetails.mimeType
         val fileSizeInBytes = fileDetails.fileSize
         val uuid: UUID = UUID.randomUUID()
 
-        println("mime type ${mimeType}")
-        val postData = UploadRequest(cid, bid,0,uuid.toString(),"-",fileSizeInBytes,".jpg",0,mimeType.toString())
-        postActionForUploadLink(imageUri, postData)
+        if (fileSizeInBytes != null) {
+            if(fileSizeInBytes > 1024 * 1024) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val compressedUri = compressImage(this@MainActivity, imageUri)
+                    withContext(Dispatchers.Main) {
+                        if (compressedUri != null) {
+                            val fileDetails = getFileDetailsFromUri( imageUri)
+                            val fileSizeInBytes = fileDetails.fileSize
+                            val mimeType = fileDetails.mimeType
+                            val postData = UploadRequest(cid, bid,0,uuid.toString(),"-",fileSizeInBytes,".jpg",0,mimeType.toString())
+                            postActionForUploadLink(compressedUri, postData)
+                            deleteFileFromUri(imageUri)
+                        } else {
+                            showSnackbar("Belge yüklenemedi!")
+                        }
+                    }
+                }
+            }
+        } else {
+            val postData = UploadRequest(cid, bid,0,uuid.toString(),"-",fileSizeInBytes,".jpg",0,mimeType.toString())
+            postActionForUploadLink(imageUri, postData)
+        }
     }
 
     private fun postActionForUploadLink(imageUri: Uri, postData: UploadRequest) {
@@ -565,8 +591,7 @@ class MainActivity : AppCompatActivity() {
                 is NetworkResult.Success -> {
                     // success state
                     println(result.data)
-                    uploadFileNow(result.data, uri = imageUri)
-
+                    uploadFileNow(result.data, uri = imageUri, true)
                 }
 
                 is NetworkResult.Error -> {
@@ -595,7 +620,7 @@ class MainActivity : AppCompatActivity() {
                 is NetworkResult.Success -> {
                     // success state
                     println(result.data)
-                    uploadFileNow(result.data, uri = imageUri)
+                    uploadFileNow(result.data, uri = imageUri, true)
 
                 }
 
@@ -657,7 +682,7 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    private fun uploadFileNow(presignedUrlResponse: PresignedUrlResponse?, uri: Uri) {
+    private fun uploadFileNow(presignedUrlResponse: PresignedUrlResponse?, uri: Uri, tekrar: Boolean = true) {
 
         val uploadFile: File? = getFileFromUri(this, uri)
 
@@ -675,11 +700,18 @@ class MainActivity : AppCompatActivity() {
                     is NetworkResult.Success -> {
                         // success state
                         println("Upload is successfull")
+                        deleteFileFromUri(uri) // delete the image after successful upload
                     }
 
                     is NetworkResult.Error -> {
                         println(result)
-                        showSnackbar("Beklenmeyen bir hata oluştu!")
+                        if (tekrar) {
+                            uploadFileNow(presignedUrlResponse, uri, false)
+                        } else {
+                            showSnackbar("Belge yüklenemedi!")
+                            deleteFileFromUri(uri) // Still delete the image even after failed upload
+                        }
+
                     }
                 }
             }

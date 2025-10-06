@@ -73,5 +73,7 @@ dependencies {
     implementation(libs.fragment.ktx)
     implementation(libs.fragment)
 
+    implementation(libs.androidx.exifinterface)
+
 
 }

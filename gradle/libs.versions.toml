@@ -17,6 +17,7 @@ kotlinx-coroutines = "1.7.3"
 lifecycle-viewmodel-ktx = "2.6.2"
 activityKtx = "1.8.2" # A recent, stable version
 fragment = "1.6.1" # Use the latest stable version
+exifinterface = "1.4.0"
 
 
 [libraries]
@@ -51,6 +52,8 @@ androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", ve
 fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
 # This is the line you need to add for setFragmentResult
 fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragment" }
+
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
