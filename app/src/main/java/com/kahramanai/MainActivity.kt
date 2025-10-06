@@ -36,7 +36,6 @@ import com.google.android.material.snackbar.Snackbar
 import com.kahramanai.ui.MainViewModel
 import androidx.activity.viewModels
 import com.kahramanai.util.NetworkResult
-import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
@@ -109,7 +108,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        prefs = getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
+        prefs = getSharedPreferences("myAppPref", MODE_PRIVATE)
 
         outputDirectory = getOutputDirectory()
 
@@ -298,7 +297,7 @@ class MainActivity : AppCompatActivity() {
                 is NetworkResult.Error<*> -> { dismissLoadingDialog(); showSnackbar("Paylaşım linki geçerli değil!") }
                 is NetworkResult.Loading<*> -> { showLoadingDialog() }
                 is NetworkResult.Success<*> -> {
-                    dismissLoadingDialog()
+
 
                     bid = result.data?.bid
                     cid = result.data?.cid
@@ -336,7 +335,7 @@ class MainActivity : AppCompatActivity() {
 
             when (result) {
                 is NetworkResult.Error<*> -> { showSnackbar("Paylaşım linki geçerli değil!") }
-                is NetworkResult.Loading<*> -> { Toast.makeText(this, "Mükellef bilgileri alınıyor...", Toast.LENGTH_SHORT).show() }
+                is NetworkResult.Loading<*> -> { }
                 is NetworkResult.Success<*> -> {
                     val bundleList = result.data
                     showBundlisList(bundleList, shareToken)
@@ -396,9 +395,13 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.postResult7.observe(this) { result ->
             when (result) {
-                is NetworkResult.Error<*> -> { showSnackbar("Paylaşım linki geçerli değil!") }
+                is NetworkResult.Error<*> -> {
+                    dismissLoadingDialog()
+                    showSnackbar("Paylaşım linki geçerli değil!")
+                }
                 is NetworkResult.Loading<*> -> {}
                 is NetworkResult.Success<*> -> {
+                    dismissLoadingDialog()
                     val bundle_code = result.data?.bundleCode
                     val bundle_name = result.data?.bundleName
                     val bundleCodeName = "$bundle_code / $bundle_name"
