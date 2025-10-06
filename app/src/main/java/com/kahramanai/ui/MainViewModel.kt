@@ -322,6 +322,7 @@ class MainViewModel : ViewModel() {
                 // The 'finally' block ensures this code runs whether the upload
                 // succeeded, failed, or threw an exception.
                 _pendingUploads.value--
+
             }
         }
     }

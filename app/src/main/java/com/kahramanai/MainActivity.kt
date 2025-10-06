@@ -62,6 +62,7 @@ import com.kahramanai.data.ShrBundle
 import com.kahramanai.util.compressImage
 import com.kahramanai.util.deleteFileFromUri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
@@ -87,8 +88,6 @@ class MainActivity : AppCompatActivity() {
     private var cid: Int? = 0
 
     private var linkVar = false
-
-
 
     // 1. Initialize the permission launcher
     private val requestPermissionLauncher =
@@ -128,7 +127,7 @@ class MainActivity : AppCompatActivity() {
                     // Update your UI based on the count
                     if (count > 0) {
                         uploadProgressBar.visibility = View.VISIBLE
-                        val uploadStatus = "${count} belge yükleniyor..."
+                        val uploadStatus = "$count belge yükleniyor..."
                         uploadText.text = uploadStatus
                     } else {
                         uploadProgressBar.visibility = View.GONE
@@ -409,9 +408,9 @@ class MainActivity : AppCompatActivity() {
                 is NetworkResult.Loading<*> -> {}
                 is NetworkResult.Success<*> -> {
                     dismissLoadingDialog()
-                    val bundle_code = result.data?.bundleCode
-                    val bundle_name = result.data?.bundleName
-                    val bundleCodeName = "$bundle_code / $bundle_name"
+                    val bundleCode = result.data?.bundleCode
+                    val bundleName = result.data?.bundleName
+                    val bundleCodeName = "$bundleCode / $bundleName"
                     binding.bundleName.text = bundleCodeName
                 }
             }
@@ -428,8 +427,8 @@ class MainActivity : AppCompatActivity() {
                 is NetworkResult.Error<*> -> { showSnackbar("Paylaşım linki geçerli değil!") }
                 is NetworkResult.Loading<*> -> {}
                 is NetworkResult.Success<*> -> {
-                    val customer_name = result.data?.customerName
-                    binding.companyName.text = customer_name
+                    val customerName = result.data?.customerName
+                    binding.companyName.text = customerName
                 }
             }
         }
@@ -525,6 +524,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleImageCaptured(imageUri: Uri){
+
+        val cameraButton = binding.cameraButton
+        cameraButton.isEnabled = false
+
+        lifecycleScope.launch {
+            // Wait for 3 seconds so the user can view the receipt to be uploaded.
+            delay(3000)
+            cameraButton.isEnabled = true
+        }
+
+
         val viewFinder = findViewById<PreviewView>(R.id.viewFinder)
         val receiptView = findViewById<ImageView>(R.id.receipt_view)
 
@@ -730,7 +740,7 @@ class MainActivity : AppCompatActivity() {
             val preview = Preview.Builder()
                 .build()
                 .also {
-                    it.setSurfaceProvider(viewFinder.surfaceProvider)
+                    it.surfaceProvider = viewFinder.surfaceProvider
                 }
 
             imageCapture = ImageCapture.Builder()
