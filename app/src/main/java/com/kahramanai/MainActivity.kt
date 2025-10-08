@@ -88,6 +88,8 @@ class MainActivity : AppCompatActivity() {
 
     private var linkVar = false
 
+    private var aiTokenCount: Int? = 1
+
     // 1. Initialize the permission launcher
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
@@ -491,6 +493,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun takePhoto() {
+
+        aiTokenCount?.let {
+            if (it < 1){
+                showSnackbar("Belge yüklemek için AI Token satın almalısınız.")
+                return
+            }
+        }
+
         val filename = SimpleDateFormat(PhotoManager.FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis()) + ".jpg"
         val photoFile = File(
             outputDirectory,
@@ -656,6 +666,7 @@ class MainActivity : AppCompatActivity() {
                     is NetworkResult.Success<*> -> {
                         val credits = result.data?.credits
                         val aiCredits = "AI Token: $credits"
+                        aiTokenCount = credits
                         binding.uploadStatusTextView.text = aiCredits
                     }
                 }
@@ -674,6 +685,7 @@ class MainActivity : AppCompatActivity() {
                     is NetworkResult.Success<*> -> {
                         val credits = result.data?.credits
                         val aiCredits = "AI Token: $credits"
+                        aiTokenCount = credits
                         binding.uploadStatusTextView.text = aiCredits
                     }
                 }
