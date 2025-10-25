@@ -1,5 +1,6 @@
 package com.kahramanai.ui
 
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -281,6 +282,10 @@ class MainViewModel : ViewModel() {
 
     // S3 Upload
     fun uploadFileS3(presignedUrlResponse: PresignedUrlResponse, file: File) {
+
+        // THIS IS THE CRITICAL LOGGING STEP
+        //Log.d("UploadDebug", "uploadFileS3 called for file: ${file.name}. Current count will be: ${_pendingUploads.value + 1}")
+
         // This updates the UI as soon as the user triggers the upload.
         _pendingUploads.value++
 

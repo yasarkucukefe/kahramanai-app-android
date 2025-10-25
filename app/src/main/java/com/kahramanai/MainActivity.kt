@@ -603,7 +603,7 @@ class MainActivity : AppCompatActivity() {
 
                 is NetworkResult.Success -> {
                     // success state
-                    println(result.data)
+                    //println(result.data)
                     uploadFileNow(result.data, uri = imageUri, true)
                 }
 
@@ -632,7 +632,7 @@ class MainActivity : AppCompatActivity() {
 
                 is NetworkResult.Success -> {
                     // success state
-                    println(result.data)
+                    //println(result.data)
                     uploadFileNow(result.data, uri = imageUri, true)
 
                 }
@@ -714,12 +714,12 @@ class MainActivity : AppCompatActivity() {
 
                     is NetworkResult.Success -> {
                         // success state
-                        println("Upload is successfull")
+                        //println("Upload is successfull")
                         deleteFileFromUri(uri) // delete the image after successful upload
                     }
 
                     is NetworkResult.Error -> {
-                        println(result)
+                        //println(result)
                         if (tekrar) {
                             uploadFileNow(presignedUrlResponse, uri, false)
                         } else {
@@ -879,8 +879,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateCameraUI(goster: Boolean){
         val visibilityStatus = if(goster) View.VISIBLE else View.GONE
+        val receiptView = findViewById<ImageView>(R.id.receipt_view)
         binding.cameraContainer.visibility = visibilityStatus
         if(isScanning){
+            receiptView.visibility = View.GONE
             binding.cancelQrScan.visibility = visibilityStatus
             binding.scanViewText.visibility = visibilityStatus
             if (goster) {
