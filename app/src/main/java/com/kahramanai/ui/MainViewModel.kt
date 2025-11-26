@@ -1,6 +1,5 @@
 package com.kahramanai.ui
 
-import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,6 +17,7 @@ import com.kahramanai.util.SingleLiveEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -287,7 +287,7 @@ class MainViewModel : ViewModel() {
         //Log.d("UploadDebug", "uploadFileS3 called for file: ${file.name}. Current count will be: ${_pendingUploads.value + 1}")
 
         // This updates the UI as soon as the user triggers the upload.
-        _pendingUploads.value++
+        _pendingUploads.update { it + 1 }
 
         viewModelScope.launch {
             _postResult3.postValue(NetworkResult.Loading()) // Notify UI that we are loading
@@ -326,7 +326,7 @@ class MainViewModel : ViewModel() {
                 // Decrement the counter when the upload is complete ---
                 // The 'finally' block ensures this code runs whether the upload
                 // succeeded, failed, or threw an exception.
-                _pendingUploads.value--
+                _pendingUploads.update { current -> (current - 1).coerceAtLeast(0) }
 
             }
         }

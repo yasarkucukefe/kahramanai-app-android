@@ -61,6 +61,7 @@ import com.kahramanai.data.SelectableItem
 import com.kahramanai.data.ShrBundle
 import com.kahramanai.util.compressImage
 import com.kahramanai.util.deleteFileFromUri
+import com.kahramanai.util.observeNetworkResultOnce
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -295,7 +296,7 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.routeSharedTokenCheck(shareToken)
 
-        viewModel.postResult5.observe(this) { result ->
+        viewModel.postResult5.observeNetworkResultOnce(this) { result ->
 
             when (result) {
                 is NetworkResult.Error<*> -> { dismissLoadingDialog(); showSnackbar("Paylaşım linki geçerli değil!") }
@@ -335,7 +336,7 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.routeSharedListCompanyBundles(shareToken)
 
-        viewModel.postResult10.observe(this) { result ->
+        viewModel.postResult10.observeNetworkResultOnce(this) { result ->
 
             when (result) {
                 is NetworkResult.Error<*> -> { showSnackbar("Paylaşım linki geçerli değil!") }
@@ -400,7 +401,7 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.routeSharedBundleData(shareToken, bid)
 
-        viewModel.postResult7.observe(this) { result ->
+        viewModel.postResult7.observeNetworkResultOnce(this) { result ->
             when (result) {
                 is NetworkResult.Error<*> -> {
                     dismissLoadingDialog()
@@ -423,7 +424,7 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.routeSharedCustomerData(shareToken)
 
-        viewModel.postResult6.observe(this) { result ->
+        viewModel.postResult6.observeNetworkResultOnce(this) { result ->
             when (result) {
                 is NetworkResult.Error<*> -> { showSnackbar("Paylaşım linki geçerli değil!") }
                 is NetworkResult.Loading<*> -> {}
@@ -441,7 +442,7 @@ class MainActivity : AppCompatActivity() {
         viewModel.routeJWTbundle(jwt)
 
         // Observers for Retrofit
-        viewModel.postResult1.observe(this) { result ->
+        viewModel.postResult1.observeNetworkResultOnce(this) { result ->
 
             when (result) {
 
@@ -579,6 +580,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun postActionForUploadLink(imageUri: Uri, postData: UploadRequest) {
+        println(imageUri.toString())
         val isJWT = prefs.getBoolean("KAI_IS_JWT", true)
         if (isJWT) {
             postActionForUploadLinkJWT(imageUri, postData)
@@ -593,7 +595,7 @@ class MainActivity : AppCompatActivity() {
         viewModel.routeSharedUploadGetPresigned(shareToken, postData)
 
         // Observers for Retrofit
-        viewModel.postResult9.observe(this) { result ->
+        viewModel.postResult9.observeNetworkResultOnce(this) { result ->
 
             when (result) {
 
@@ -622,7 +624,7 @@ class MainActivity : AppCompatActivity() {
         viewModel.routeJWTupload2_presigned(JWT, postData)
 
         // Observers for Retrofit
-        viewModel.postResult2.observe(this) { result ->
+        viewModel.postResult2.observeNetworkResultOnce(this) { result ->
 
             when (result) {
 
@@ -658,7 +660,7 @@ class MainActivity : AppCompatActivity() {
             val jwt : String? = prefs.getString("KAI_JWT_TOKEN","---------")
             viewModel.routeJWTuserCredits(jwt)
 
-            viewModel.postResult4.observe(this) { result ->
+            viewModel.postResult4.observeNetworkResultOnce(this) { result ->
 
                 when (result) {
                     is NetworkResult.Error<*> -> { showSnackbar("Beklenmeyen bir hata oluştu!")}
@@ -677,7 +679,7 @@ class MainActivity : AppCompatActivity() {
 
             viewModel.routeSharedUserCredits(shareToken)
 
-            viewModel.postResult8.observe(this) { result ->
+            viewModel.postResult8.observeNetworkResultOnce(this) { result ->
 
                 when (result) {
                     is NetworkResult.Error<*> -> { showSnackbar("Beklenmeyen bir hata oluştu!")}
@@ -702,31 +704,29 @@ class MainActivity : AppCompatActivity() {
         val uploadFile: File? = getFileFromUri(this, uri)
 
         if (uploadFile != null && presignedUrlResponse != null) {
+            // Immediately reset camera UI so the user can take another photo,
+            // independent of whether we see the Loading state.
+            continuePhotoCapture()
+
             viewModel.uploadFileS3(presignedUrlResponse, uploadFile)
 
-            viewModel.postResult3.observe(this) { result ->
-
+            viewModel.postResult3.observeNetworkResultOnce(this) { result ->
                 when (result) {
-
-                    is NetworkResult.Loading<*> -> {
-                        continuePhotoCapture()
-                    }
-
                     is NetworkResult.Success -> {
-                        // success state
-                        //println("Upload is successfull")
-                        deleteFileFromUri(uri) // delete the image after successful upload
+                        // Upload successful, delete the temp image
+                        deleteFileFromUri(uri)
                     }
-
                     is NetworkResult.Error -> {
-                        //println(result)
                         if (tekrar) {
                             uploadFileNow(presignedUrlResponse, uri, false)
                         } else {
                             showSnackbar("Belge yüklenemedi!")
-                            deleteFileFromUri(uri) // Still delete the image even after failed upload
+                            // Even on final failure, clean up the temp image
+                            deleteFileFromUri(uri)
                         }
-
+                    }
+                    is NetworkResult.Loading<*> -> {
+                        // No-op: UI was already reset above
                     }
                 }
             }
