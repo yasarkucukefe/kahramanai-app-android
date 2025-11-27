@@ -87,6 +87,11 @@ class MainActivity : AppCompatActivity() {
     private var bid: Int? = 0
     private var cid: Int? = 0
 
+    // In-memory state for the currently active auth
+    private var currentShareToken: String? = null
+    private var currentJwtToken: String? = null
+    private var currentIsJwt: Boolean = true
+
     private var linkVar = false
 
     private var aiTokenCount: Int? = 1
@@ -114,6 +119,11 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         prefs = getSharedPreferences("myAppPref", MODE_PRIVATE)
+
+        // Initialize in-memory auth state from persisted values
+        currentIsJwt = prefs.getBoolean("KAI_IS_JWT", true)
+        currentJwtToken = prefs.getString("KAI_JWT_TOKEN", null)
+        currentShareToken = prefs.getString("KAI_SHARE_TOKEN", null)
 
         outputDirectory = getOutputDirectory()
 
@@ -243,7 +253,7 @@ class MainActivity : AppCompatActivity() {
             val selectedItemId = bundle.getInt(SelectionDialogFragment.RESULT_KEY)
             bid = selectedItemId
             handleBundleDataComplete()
-            val shareToken : String? = prefs.getString("KAI_SHARE_TOKEN", "------")
+            val shareToken : String? = currentShareToken
             Log.d(TAG, "bid: $bid ")
             getBundleData(shareToken, bid!!)
         }
@@ -303,9 +313,13 @@ class MainActivity : AppCompatActivity() {
                 is NetworkResult.Loading<*> -> { showLoadingDialog() }
                 is NetworkResult.Success<*> -> {
 
-
                     bid = result.data?.bid
                     cid = result.data?.cid
+
+                    // Update in-memory auth state first
+                    currentShareToken = shareToken
+                    currentIsJwt = false
+                    currentJwtToken = null
 
                     val editor = prefs.edit()
                     editor.putString("KAI_SHARE_TOKEN", shareToken)
@@ -397,8 +411,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun getBundleData(shareToken: String?, bid: Int) {
 
-        Log.d(TAG, "Share token: $shareToken")
-
         viewModel.routeSharedBundleData(shareToken, bid)
 
         viewModel.postResult7.observeNetworkResultOnce(this) { result ->
@@ -455,6 +467,12 @@ class MainActivity : AppCompatActivity() {
                     // println(result.data)
                     dismissLoadingDialog()
                     receivedJWTdata(result.data)
+
+                    // Update in-memory auth state first
+                    currentJwtToken = jwt
+                    currentIsJwt = true
+                    currentShareToken = null
+
                     val editor = prefs.edit()
                     editor.putString("KAI_JWT_TOKEN", jwt)
                     editor.putString("KAI_URL_LINK", urlLink)
@@ -580,9 +598,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun postActionForUploadLink(imageUri: Uri, postData: UploadRequest) {
-        println(imageUri.toString())
-        val isJWT = prefs.getBoolean("KAI_IS_JWT", true)
-        if (isJWT) {
+        if (currentIsJwt) {
             postActionForUploadLinkJWT(imageUri, postData)
         } else {
             postActionForUploadLinkForShared(imageUri, postData)
@@ -590,8 +606,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun postActionForUploadLinkForShared(imageUri: Uri, postData: UploadRequest) {
-        val shareToken = prefs.getString("KAI_SHARE_TOKEN", "------")
-
+        val shareToken = currentShareToken
         viewModel.routeSharedUploadGetPresigned(shareToken, postData)
 
         // Observers for Retrofit
@@ -619,9 +634,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun postActionForUploadLinkJWT(imageUri: Uri, postData: UploadRequest) {
-        val JWT = prefs.getString("KAI_JWT_TOKEN", "------")
-
-        viewModel.routeJWTupload2_presigned(JWT, postData)
+        val jwt = currentJwtToken
+        viewModel.routeJWTupload2_presigned(jwt, postData)
 
         // Observers for Retrofit
         viewModel.postResult2.observeNetworkResultOnce(this) { result ->
@@ -655,9 +669,8 @@ class MainActivity : AppCompatActivity() {
 
         if (!linkVar) { return }
 
-        val isJWT = prefs.getBoolean("KAI_IS_JWT", true)
-        if (isJWT) {
-            val jwt : String? = prefs.getString("KAI_JWT_TOKEN","---------")
+        if (currentIsJwt) {
+            val jwt : String? = currentJwtToken
             viewModel.routeJWTuserCredits(jwt)
 
             viewModel.postResult4.observeNetworkResultOnce(this) { result ->
@@ -675,8 +688,7 @@ class MainActivity : AppCompatActivity() {
 
             }
         } else {
-            val shareToken:String? = prefs.getString("KAI_SHARE_TOKEN","---------")
-
+            val shareToken:String? = currentShareToken
             viewModel.routeSharedUserCredits(shareToken)
 
             viewModel.postResult8.observeNetworkResultOnce(this) { result ->
