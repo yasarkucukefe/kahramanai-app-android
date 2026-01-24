@@ -11,8 +11,8 @@ android {
         applicationId = "com.kahramanai"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.05"
+        versionCode = 6
+        versionName = "1.06"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
