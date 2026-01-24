@@ -3,6 +3,7 @@ package com.kahramanai.util
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -17,7 +18,7 @@ const val TARGET_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 fun compressImage(context: Context, originalUri: Uri): Uri? {
     // First, check the original file size
-    val originalFileSize = getFileSizeFromUri(originalUri)
+    val originalFileSize = getFileSizeFromUri(context, originalUri)
     if (originalFileSize != null) {
         if (originalFileSize <= TARGET_FILE_SIZE_BYTES) {
             // If the file is already small enough, just return the original URI
@@ -90,13 +91,47 @@ fun uriToBitmap(context: Context, uri: Uri): Bitmap? {
     }
 }
 
-fun getFileSizeFromUri( uri: Uri): Long? {
-    var fileSize: Long? = 0
+fun getFileSizeFromUri(context: Context, uri: Uri): Long? {
+    var fileSize: Long? = null
     try {
-        uri.path?.let {
-            val file = File(it)
-            if (file.exists()) {
-                fileSize = file.length()
+        // Handle file:// URIs (from camera capture)
+        if (uri.scheme == "file" || uri.scheme == null) {
+            val path = uri.path
+            if (path != null) {
+                val file = File(path)
+                if (file.exists()) {
+                    fileSize = file.length()
+                }
+            }
+        } else if (uri.scheme == "content") {
+            // Handle content:// URIs (from FileProvider, etc.)
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (sizeIndex != -1) {
+                        val size = cursor.getLong(sizeIndex)
+                        if (size > 0) {
+                            fileSize = size
+                        }
+                    }
+                }
+            }
+            // If ContentResolver didn't provide size, try reading from file path
+            if (fileSize == null) {
+                uri.path?.let {
+                    val file = File(it)
+                    if (file.exists()) {
+                        fileSize = file.length()
+                    }
+                }
+            }
+        } else {
+            // Fallback: try to read from path
+            uri.path?.let {
+                val file = File(it)
+                if (file.exists()) {
+                    fileSize = file.length()
+                }
             }
         }
     } catch (e: Exception) {

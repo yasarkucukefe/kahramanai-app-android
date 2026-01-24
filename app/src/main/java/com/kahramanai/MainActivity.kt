@@ -93,19 +93,37 @@ class MainActivity : AppCompatActivity() {
     private var currentIsJwt: Boolean = true
 
     private var linkVar = false
+    private var lastAttemptedLink: String? = null
+    private var lastAttemptedJwt: String? = null
+    private var lastAttemptedShareToken: String? = null
 
     private var aiTokenCount: Int? = 1
+
+    private var currentProcessingUri: Uri? = null
+
+    // Track what action triggered the permission request
+    private var pendingCameraAction: CameraAction? = null
+
+    private enum class CameraAction {
+        SCAN_QR,
+        TAKE_PHOTO
+    }
 
     // 1. Initialize the permission launcher
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
-                // Permission was granted by the user.
-                // startCamera()
+                // Permission was granted - proceed with the pending action
+                when (pendingCameraAction) {
+                    CameraAction.SCAN_QR -> proceedWithScanning()
+                    CameraAction.TAKE_PHOTO -> proceedWithPhotoCapture()
+                    null -> { /* No action pending */ }
+                }
             } else {
                 // Permission was denied.
-                Toast.makeText(this, "QR kod okuma için kamera izni gerekmektedir.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Kamera izni gerekmektedir.", Toast.LENGTH_LONG).show()
             }
+            pendingCameraAction = null
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -186,20 +204,8 @@ class MainActivity : AppCompatActivity() {
 
         // Set the click listener on the button
         scanButton.setOnClickListener {
-
-            isScanning = true // set the camera mode to scan
-
-            // 1. Hide the panels
-            visibilityPanelForLinks(false)
-            visibilityPanelForKahraman(false)
-
-            // 2. Show the camera container (FrameLayout)
-            updateCameraUI(true)
-
-            updateCameraContainerConstraints(R.id.scanViewText, R.id.cancel_qr_scan)
-
-            // 3. Call the function to check permission and launch the camera
-            requestCameraAndShow()
+            // Check permission first, then proceed with scanning
+            requestCameraPermissionFor(CameraAction.SCAN_QR)
         }
 
         // Set the click listener on iptal qr scan
@@ -260,6 +266,186 @@ class MainActivity : AppCompatActivity() {
 
         // Other actions
         checkTheLastLink()
+        setupObservers()
+    }
+
+    private fun setupObservers() {
+        // Observe S3 Upload Result
+        viewModel.postResult3.observe(this) { result ->
+            val uri = currentProcessingUri ?: return@observe
+            when (result) {
+                is NetworkResult.Success -> {
+                    deleteFileFromUri(uri)
+                    currentProcessingUri = null
+                }
+                is NetworkResult.Error -> {
+                    showSnackbar("Belge yüklenemedi!")
+                }
+                else -> {}
+            }
+        }
+
+        // Observe JWT Presigned URL Result
+        viewModel.postResult2.observe(this) { result ->
+            val uri = currentProcessingUri ?: return@observe
+            when (result) {
+                is NetworkResult.Success -> {
+                    uploadFileNow(result.data, uri, true)
+                }
+                is NetworkResult.Error -> {
+                    showSnackbar("Beklenmeyen bir hata oluştu!")
+                }
+                else -> {}
+            }
+        }
+
+        // Observe Shared Presigned URL Result
+        viewModel.postResult9.observe(this) { result ->
+            val uri = currentProcessingUri ?: return@observe
+            when (result) {
+                is NetworkResult.Success -> {
+                    uploadFileNow(result.data, uri, true)
+                }
+                is NetworkResult.Error -> {
+                    showSnackbar("Beklenmeyen bir hata oluştu!")
+                }
+                else -> {}
+            }
+        }
+
+        // Observe JWT Token Data
+        viewModel.postResult1.observe(this) { result ->
+            when (result) {
+                is NetworkResult.Loading<*> -> {
+                    showLoadingDialog()
+                }
+                is NetworkResult.Success -> {
+                    dismissLoadingDialog()
+                    receivedJWTdata(result.data)
+
+                    // Update in-memory auth state first
+                    currentJwtToken = lastAttemptedJwt
+                    currentIsJwt = true
+                    currentShareToken = null
+
+                    val editor = prefs.edit()
+                    editor.putString("KAI_JWT_TOKEN", lastAttemptedJwt)
+                    editor.putString("KAI_URL_LINK", lastAttemptedLink)
+                    editor.putBoolean("KAI_IS_JWT", true)
+                    editor.putBoolean("KAI_LINK_VAR", true)
+                    editor.apply()
+                    //
+                    checkTheLastLink()
+                }
+                is NetworkResult.Error -> {
+                    dismissLoadingDialog()
+                    showSnackbar("Paylaşım linki geçerli değil!")
+                }
+            }
+        }
+
+        // Observe Shared Token Check Result
+        viewModel.postResult5.observe(this) { result ->
+            when (result) {
+                is NetworkResult.Loading<*> -> {
+                    showLoadingDialog()
+                }
+                is NetworkResult.Success -> {
+                    dismissLoadingDialog()
+                    bid = result.data?.bid
+                    cid = result.data?.cid
+
+                    // Update in-memory auth state first
+                    currentShareToken = lastAttemptedShareToken
+                    currentIsJwt = false
+                    currentJwtToken = null
+
+                    val editor = prefs.edit()
+                    editor.putString("KAI_SHARE_TOKEN", lastAttemptedShareToken)
+                    editor.putString("KAI_URL_LINK", lastAttemptedLink)
+                    editor.putBoolean("KAI_IS_JWT", false)
+                    editor.putBoolean("KAI_LINK_VAR", true)
+                    editor.apply()
+                    linkVar = true
+                    //
+                    checkTheLastLink()
+
+                    lastAttemptedShareToken?.let { getCompanyData(it) }
+
+                    bid?.let {
+                        if(it > 0) {
+                            handleBundleDataComplete()
+                            getBundleData(lastAttemptedShareToken, bid!!)
+                        } else {
+                            lastAttemptedShareToken?.let { it1 -> handleCompanyShareLink(it1) }
+                        }
+                    }
+                }
+                is NetworkResult.Error -> {
+                    dismissLoadingDialog()
+                    showSnackbar("Paylaşım linki geçerli değil!")
+                }
+            }
+        }
+
+        // Observe User Credits (JWT)
+        viewModel.postResult4.observe(this) { result ->
+            if (result is NetworkResult.Success) {
+                val credits = result.data?.credits
+                val aiCredits = "AI Token: $credits"
+                aiTokenCount = credits
+                binding.uploadStatusTextView.text = aiCredits
+            } else if (result is NetworkResult.Error) {
+                showSnackbar("Beklenmeyen bir hata oluştu!")
+            }
+        }
+
+        // Observe User Credits (Shared)
+        viewModel.postResult8.observe(this) { result ->
+            if (result is NetworkResult.Success) {
+                val credits = result.data?.credits
+                val aiCredits = "AI Token: $credits"
+                aiTokenCount = credits
+                binding.uploadStatusTextView.text = aiCredits
+            } else if (result is NetworkResult.Error) {
+                showSnackbar("Beklenmeyen bir hata oluştu!")
+            }
+        }
+
+        // Observe Company Data
+        viewModel.postResult6.observe(this) { result ->
+            if (result is NetworkResult.Success) {
+                val customerName = result.data?.customerName
+                binding.companyName.text = customerName
+            } else if (result is NetworkResult.Error) {
+                showSnackbar("Paylaşım linki geçerli değil!")
+            }
+        }
+
+        // Observe Bundle Data
+        viewModel.postResult7.observe(this) { result ->
+            if (result is NetworkResult.Success) {
+                dismissLoadingDialog()
+                val bundleCode = result.data?.bundleCode
+                val bundleName = result.data?.bundleName
+                val bundleCodeName = "$bundleCode / $bundleName"
+                binding.bundleName.text = bundleCodeName
+            } else if (result is NetworkResult.Error) {
+                dismissLoadingDialog()
+                showSnackbar("Paylaşım linki geçerli değil!")
+            }
+        }
+
+        // Observe Company Bundles List
+        viewModel.postResult10.observe(this) { result ->
+            if (result is NetworkResult.Success) {
+                val bundleList = result.data
+                dismissLoadingDialog()
+                showBundlisList(bundleList)
+            } else if (result is NetworkResult.Error) {
+                showSnackbar("Paylaşım linki geçerli değil!")
+            }
+        }
     }
 
     private fun openUrlInBrowser(url: String) {
@@ -303,65 +489,13 @@ class MainActivity : AppCompatActivity() {
 
     // SHARE TOKEN
     private fun getLinkDataShared(shareToken: String, link: String){
-
+        lastAttemptedLink = link
+        lastAttemptedShareToken = shareToken
         viewModel.routeSharedTokenCheck(shareToken)
-
-        viewModel.postResult5.observeNetworkResultOnce(this) { result ->
-
-            when (result) {
-                is NetworkResult.Error<*> -> { dismissLoadingDialog(); showSnackbar("Paylaşım linki geçerli değil!") }
-                is NetworkResult.Loading<*> -> { showLoadingDialog() }
-                is NetworkResult.Success<*> -> {
-
-                    bid = result.data?.bid
-                    cid = result.data?.cid
-
-                    // Update in-memory auth state first
-                    currentShareToken = shareToken
-                    currentIsJwt = false
-                    currentJwtToken = null
-
-                    val editor = prefs.edit()
-                    editor.putString("KAI_SHARE_TOKEN", shareToken)
-                    editor.putString("KAI_URL_LINK", link)
-                    editor.putBoolean("KAI_IS_JWT", false)
-                    editor.putBoolean("KAI_LINK_VAR", true)
-                    editor.apply()
-                    linkVar = true
-                    //
-                    checkTheLastLink()
-
-                    getCompanyData(shareToken)
-
-                    bid?.let {
-                        if(it > 0) {
-                            handleBundleDataComplete()
-                            getBundleData(shareToken, bid!!)
-                        } else {
-                            handleCompanyShareLink(shareToken)
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private fun handleCompanyShareLink (shareToken: String) {
-
         viewModel.routeSharedListCompanyBundles(shareToken)
-
-        viewModel.postResult10.observeNetworkResultOnce(this) { result ->
-
-            when (result) {
-                is NetworkResult.Error<*> -> { showSnackbar("Paylaşım linki geçerli değil!") }
-                is NetworkResult.Loading<*> -> { }
-                is NetworkResult.Success<*> -> {
-                    val bundleList = result.data
-                    dismissLoadingDialog()
-                    showBundlisList(bundleList)
-                }
-            }
-        }
     }
 
     private fun showBundlisList (bundleList: List<ShrBundle>?){
@@ -403,93 +537,23 @@ class MainActivity : AppCompatActivity() {
         visibilityPanelForLinks(false)
         visibilityPanelForCompany(true)
 
-        isScanning = false
-        updateCameraUI(true)
-        requestCameraAndShow()
-
+        // Request camera permission, then start photo capture mode
+        requestCameraPermissionFor(CameraAction.TAKE_PHOTO)
     }
 
     private fun getBundleData(shareToken: String?, bid: Int) {
-
         viewModel.routeSharedBundleData(shareToken, bid)
-
-        viewModel.postResult7.observeNetworkResultOnce(this) { result ->
-            when (result) {
-                is NetworkResult.Error<*> -> {
-                    dismissLoadingDialog()
-                    showSnackbar("Paylaşım linki geçerli değil!")
-                }
-                is NetworkResult.Loading<*> -> {}
-                is NetworkResult.Success<*> -> {
-                    dismissLoadingDialog()
-                    val bundleCode = result.data?.bundleCode
-                    val bundleName = result.data?.bundleName
-                    val bundleCodeName = "$bundleCode / $bundleName"
-                    binding.bundleName.text = bundleCodeName
-                }
-            }
-        }
     }
     private fun getCompanyData(shareToken: String) {
-
         Log.d(TAG, "Share token: $shareToken")
-
         viewModel.routeSharedCustomerData(shareToken)
-
-        viewModel.postResult6.observeNetworkResultOnce(this) { result ->
-            when (result) {
-                is NetworkResult.Error<*> -> { showSnackbar("Paylaşım linki geçerli değil!") }
-                is NetworkResult.Loading<*> -> {}
-                is NetworkResult.Success<*> -> {
-                    val customerName = result.data?.customerName
-                    binding.companyName.text = customerName
-                }
-            }
-        }
     }
 
     // JWT TOKEN
     private fun getLinkDataJWT(jwt: String, urlLink: String){
-
+        lastAttemptedLink = urlLink
+        lastAttemptedJwt = jwt
         viewModel.routeJWTbundle(jwt)
-
-        // Observers for Retrofit
-        viewModel.postResult1.observeNetworkResultOnce(this) { result ->
-
-            when (result) {
-
-                is NetworkResult.Loading<*> -> {
-                    showLoadingDialog()
-                }
-
-                is NetworkResult.Success -> {
-                    // success state
-                    // println(result.data)
-                    dismissLoadingDialog()
-                    receivedJWTdata(result.data)
-
-                    // Update in-memory auth state first
-                    currentJwtToken = jwt
-                    currentIsJwt = true
-                    currentShareToken = null
-
-                    val editor = prefs.edit()
-                    editor.putString("KAI_JWT_TOKEN", jwt)
-                    editor.putString("KAI_URL_LINK", urlLink)
-                    editor.putBoolean("KAI_IS_JWT", true)
-                    editor.putBoolean("KAI_LINK_VAR", true)
-                    editor.apply()
-                    //
-                    checkTheLastLink()
-                }
-
-                is NetworkResult.Error -> {
-                    println(result)
-                    dismissLoadingDialog()
-                    showSnackbar("Paylaşım linki geçerli değil!")
-                }
-            }
-        }
     }
 
     private fun receivedJWTdata (data: ResponseJwtBundle?) {
@@ -506,9 +570,8 @@ class MainActivity : AppCompatActivity() {
         visibilityPanelForLinks(false)
         visibilityPanelForCompany(true)
 
-        isScanning = false
-        updateCameraUI(true)
-        requestCameraAndShow()
+        // Request camera permission, then start photo capture mode
+        requestCameraPermissionFor(CameraAction.TAKE_PHOTO)
     }
 
     private fun takePhoto() {
@@ -568,7 +631,7 @@ class MainActivity : AppCompatActivity() {
         receiptView.visibility = View.VISIBLE
 
         // Process file
-        val fileDetails = getFileDetailsFromUri( imageUri)
+        val fileDetails = getFileDetailsFromUri(this, imageUri)
         val mimeType = fileDetails.mimeType
         val fileSizeInBytes = fileDetails.fileSize
         val uuid: UUID = UUID.randomUUID()
@@ -579,7 +642,8 @@ class MainActivity : AppCompatActivity() {
                     val compressedUri = compressImage(this@MainActivity, imageUri)
                     withContext(Dispatchers.Main) {
                         if (compressedUri != null) {
-                            val fileDetails = getFileDetailsFromUri( imageUri)
+                            // Use compressedUri for file details, not the original imageUri
+                            val fileDetails = getFileDetailsFromUri(this@MainActivity, compressedUri)
                             val fileSizeInBytes = fileDetails.fileSize
                             val mimeType = fileDetails.mimeType
                             val postData = UploadRequest(cid, bid,0,uuid.toString(),"-",fileSizeInBytes,".jpg",0,mimeType.toString())
@@ -607,62 +671,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun postActionForUploadLinkForShared(imageUri: Uri, postData: UploadRequest) {
         val shareToken = currentShareToken
+        currentProcessingUri = imageUri
         viewModel.routeSharedUploadGetPresigned(shareToken, postData)
-
-        // Observers for Retrofit
-        viewModel.postResult9.observeNetworkResultOnce(this) { result ->
-
-            when (result) {
-
-                is NetworkResult.Loading<*> -> {
-                    // Show some progress here
-                }
-
-                is NetworkResult.Success -> {
-                    // success state
-                    //println(result.data)
-                    uploadFileNow(result.data, uri = imageUri, true)
-                }
-
-                is NetworkResult.Error -> {
-                    println(result)
-                    showSnackbar("Beklenmeyen bir hata oluştu!")
-                }
-            }
-        }
-
     }
 
     private fun postActionForUploadLinkJWT(imageUri: Uri, postData: UploadRequest) {
         val jwt = currentJwtToken
+        currentProcessingUri = imageUri
         viewModel.routeJWTupload2_presigned(jwt, postData)
-
-        // Observers for Retrofit
-        viewModel.postResult2.observeNetworkResultOnce(this) { result ->
-
-            when (result) {
-
-                is NetworkResult.Loading<*> -> {
-                    // Show some progress here
-                }
-
-                is NetworkResult.Success -> {
-                    // success state
-                    //println(result.data)
-                    uploadFileNow(result.data, uri = imageUri, true)
-
-                }
-
-                is NetworkResult.Error -> {
-                    println(result)
-                    showSnackbar("Beklenmeyen bir hata oluştu!")
-                }
-
-
-            }
-
-        }
-
     }
 
     private fun getUserCredits() {
@@ -672,76 +688,36 @@ class MainActivity : AppCompatActivity() {
         if (currentIsJwt) {
             val jwt : String? = currentJwtToken
             viewModel.routeJWTuserCredits(jwt)
-
-            viewModel.postResult4.observeNetworkResultOnce(this) { result ->
-
-                when (result) {
-                    is NetworkResult.Error<*> -> { showSnackbar("Beklenmeyen bir hata oluştu!")}
-                    is NetworkResult.Loading<*> -> {}
-                    is NetworkResult.Success<*> -> {
-                        val credits = result.data?.credits
-                        val aiCredits = "AI Token: $credits"
-                        aiTokenCount = credits
-                        binding.uploadStatusTextView.text = aiCredits
-                    }
-                }
-
-            }
         } else {
             val shareToken:String? = currentShareToken
             viewModel.routeSharedUserCredits(shareToken)
-
-            viewModel.postResult8.observeNetworkResultOnce(this) { result ->
-
-                when (result) {
-                    is NetworkResult.Error<*> -> { showSnackbar("Beklenmeyen bir hata oluştu!")}
-                    is NetworkResult.Loading<*> -> {}
-                    is NetworkResult.Success<*> -> {
-                        val credits = result.data?.credits
-                        val aiCredits = "AI Token: $credits"
-                        aiTokenCount = credits
-                        binding.uploadStatusTextView.text = aiCredits
-                    }
-                }
-
-            }
-
         }
-
-
     }
 
     private fun uploadFileNow(presignedUrlResponse: PresignedUrlResponse?, uri: Uri, tekrar: Boolean = true) {
 
+        // Verify the source URI/file exists and is readable before proceeding
+        val sourceFileSize = getFileDetailsFromUri(this, uri).fileSize
+        if (sourceFileSize == null || sourceFileSize == 0L) {
+            showSnackbar("Dosya okunamadı veya boş!")
+            return
+        }
+
         val uploadFile: File? = getFileFromUri(this, uri)
 
         if (uploadFile != null && presignedUrlResponse != null) {
+            // Verify the copied file has content
+            if (!uploadFile.exists() || uploadFile.length() == 0L) {
+                uploadFile.delete()
+                showSnackbar("Dosya kopyalanamadı!")
+                return
+            }
+
             // Immediately reset camera UI so the user can take another photo,
             // independent of whether we see the Loading state.
             continuePhotoCapture()
 
             viewModel.uploadFileS3(presignedUrlResponse, uploadFile)
-
-            viewModel.postResult3.observeNetworkResultOnce(this) { result ->
-                when (result) {
-                    is NetworkResult.Success -> {
-                        // Upload successful, delete the temp image
-                        deleteFileFromUri(uri)
-                    }
-                    is NetworkResult.Error -> {
-                        if (tekrar) {
-                            uploadFileNow(presignedUrlResponse, uri, false)
-                        } else {
-                            showSnackbar("Belge yüklenemedi!")
-                            // Even on final failure, clean up the temp image
-                            deleteFileFromUri(uri)
-                        }
-                    }
-                    is NetworkResult.Loading<*> -> {
-                        // No-op: UI was already reset above
-                    }
-                }
-            }
         }
     }
 
@@ -927,30 +903,79 @@ class MainActivity : AppCompatActivity() {
         cameraProvider = null
     }
 
-    private fun requestCameraAndShow() {
-        // 3. Check the current permission status
+    /**
+     * Check camera permission and either proceed immediately or request permission.
+     * The pending action is stored so we know what to do when permission is granted.
+     */
+    private fun requestCameraPermissionFor(action: CameraAction) {
         when {
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.CAMERA
             ) == PackageManager.PERMISSION_GRANTED -> {
-                // The permission is already granted.
-                // You can directly show the camera.
-                startCamera()
+                // Permission already granted - proceed immediately
+                when (action) {
+                    CameraAction.SCAN_QR -> proceedWithScanning()
+                    CameraAction.TAKE_PHOTO -> proceedWithPhotoCapture()
+                }
             }
             shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) -> {
-                // The user has previously denied the permission.
-                // You should show a dialog explaining why you need the permission.
-                // For this example, we'll just re-request. In a real app, show a dialog.
-                Toast.makeText(this, "QR kod okuma için kamera izni gerekmektedir.", Toast.LENGTH_SHORT).show()
+                // User previously denied - show rationale then request
+                Toast.makeText(this, "Kamera izni gerekmektedir.", Toast.LENGTH_SHORT).show()
+                pendingCameraAction = action
                 requestPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
             else -> {
-                // The permission has not been asked for yet.
-                // Launch the permission request dialog.
+                // First time asking - request permission
+                pendingCameraAction = action
                 requestPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
         }
+    }
+
+    /**
+     * Called after camera permission is confirmed for QR scanning.
+     * Updates the UI and starts the barcode scanner.
+     */
+    private fun proceedWithScanning() {
+        isScanning = true
+
+        // 1. Hide the panels
+        visibilityPanelForLinks(false)
+        visibilityPanelForKahraman(false)
+
+        // 2. Show the camera container
+        updateCameraUI(true)
+        updateCameraContainerConstraints(R.id.scanViewText, R.id.cancel_qr_scan)
+
+        // 3. Start the camera for scanning
+        startCamera()
+    }
+
+    /**
+     * Called after camera permission is confirmed for photo capture.
+     * Updates the UI and starts the photo capture camera.
+     */
+    private fun proceedWithPhotoCapture() {
+        isScanning = false
+
+        // Clear any previously captured image to avoid showing stale content
+        val receiptView = findViewById<ImageView>(R.id.receipt_view)
+        receiptView.setImageDrawable(null)
+        receiptView.visibility = View.GONE
+
+        // Show camera preview
+        val viewFinder = findViewById<PreviewView>(R.id.viewFinder)
+        viewFinder.visibility = View.VISIBLE
+        binding.cameraButton.isEnabled = true
+
+        updateCameraUI(true)
+        requestCameraAndShow()
+    }
+
+    private fun requestCameraAndShow() {
+        // Permission is already confirmed at this point
+        startCamera()
     }
 
     /**
