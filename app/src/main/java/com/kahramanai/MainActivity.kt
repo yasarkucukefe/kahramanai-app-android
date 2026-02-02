@@ -321,12 +321,12 @@ class MainActivity : AppCompatActivity() {
                 }
                 is NetworkResult.Success -> {
                     dismissLoadingDialog()
-                    receivedJWTdata(result.data)
 
-                    // Update in-memory auth state first
+                    // Update in-memory auth state BEFORE calling UI logic
                     currentJwtToken = lastAttemptedJwt
                     currentIsJwt = true
                     currentShareToken = null
+                    linkVar = true
 
                     val editor = prefs.edit()
                     editor.putString("KAI_JWT_TOKEN", lastAttemptedJwt)
@@ -334,7 +334,8 @@ class MainActivity : AppCompatActivity() {
                     editor.putBoolean("KAI_IS_JWT", true)
                     editor.putBoolean("KAI_LINK_VAR", true)
                     editor.apply()
-                    //
+
+                    receivedJWTdata(result.data)
                     checkTheLastLink()
                 }
                 is NetworkResult.Error -> {
@@ -396,7 +397,7 @@ class MainActivity : AppCompatActivity() {
                 aiTokenCount = credits
                 binding.uploadStatusTextView.text = aiCredits
             } else if (result is NetworkResult.Error) {
-                showSnackbar("Beklenmeyen bir hata oluştu!")
+                showSnackbar("Beklenmeyen bir hata oluştu! (JWT)")
             }
         }
 
@@ -408,7 +409,7 @@ class MainActivity : AppCompatActivity() {
                 aiTokenCount = credits
                 binding.uploadStatusTextView.text = aiCredits
             } else if (result is NetworkResult.Error) {
-                showSnackbar("Beklenmeyen bir hata oluştu!")
+                showSnackbar("Beklenmeyen bir hata oluştu! (Shared)")
             }
         }
 
